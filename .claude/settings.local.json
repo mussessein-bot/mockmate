@@ -1,0 +1,39 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx create-next-app@14 frontend --typescript --tailwind --app --no-src-dir --no-eslint --import-alias \"@/*\" --yes)",
+      "Bash(npx shadcn@latest init --defaults)",
+      "Bash(npx shadcn@latest add card badge progress separator)",
+      "Bash(npm install *)",
+      "Bash(pip install *)",
+      "Bash(npx tsc *)",
+      "Bash(curl -s http://localhost:8000/api/sessions -X POST -H 'Content-Type: application/json' -d '{\"name\":\"测试\",\"target_role\":\"PM\",\"language\":\"zh\",\"interview_type\":\"behavioral\",\"interview_mode\":\"preset\",\"persona\":\"sarah\"}')",
+      "Bash(npx next *)",
+      "Bash(python -c \"from app.api.router import api_router; from app.api.upload import router; print\\('OK'\\)\")",
+      "Bash(python -c ' *)",
+      "Bash(pkill -f \"uvicorn app.main:app\")",
+      "Bash(uvicorn app.main:app --reload)",
+      "Bash(curl -s http://localhost:8000/docs)",
+      "Bash(npm run *)",
+      "Bash(curl -s http://localhost:3000)",
+      "Bash(curl -s -X POST http://localhost:8000/api/sessions -H 'Content-Type: application/json' -d '{\"name\":\"测试\",\"target_role\":\"产品经理\",\"language\":\"zh\",\"interview_type\":\"behavioral\",\"interview_mode\":\"preset\",\"interview_interface\":\"text\",\"persona\":\"sarah\"}')",
+      "Bash(python3 -m json.tool)",
+      "Bash(curl *)",
+      "Bash(python3 *)",
+      "Bash(lsof *)",
+      "Bash(ps *)",
+      "Bash(echo \"curl PID: $!\")",
+      "Bash(wait 7802)",
+      "Bash(echo \"curl done: $?\")",
+      "Bash(kill 7354 7514 7802 7911 7352)",
+      "Bash(kill -9 4256)",
+      "Bash(kill -9 5300)",
+      "Bash(awk '{print $1, $4}')",
+      "Bash(env)",
+      "Bash(xxd /Users/yuchenzhang/work/claude/project/interview_agent/backend/audio/2eba827d-006f-42fa-9fb3-749504b7142a_9d0f2090.mp3)",
+      "Bash(git init *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
+    ]
+  }
+}
