@@ -16,6 +16,7 @@ from app.services.tts import generate_audio, generate_preview
 from app.services.stt import transcribe_audio, STTError
 from app.storage.session_store import load_session, save_session
 from app.core.exceptions import SessionNotFoundError
+from app.core.models import InterviewInterface
 from app.config import AUDIO_DIR
 import asyncio
 import aiofiles
@@ -66,13 +67,17 @@ async def start_interview(session_id: str):
     session.messages.append(msg)
     _last_question[session_id] = text
 
-    audio_file = await generate_audio(text, session.persona.value, session.profile.language.value, session_id)
-    _last_audio_url[session_id] = _audio_url(audio_file)
+    if session.interview_interface == InterviewInterface.VOICE:
+        audio_file = await generate_audio(text, session.persona.value, session.profile.language.value, session_id)
+        audio_url_val = _audio_url(audio_file)
+        _last_audio_url[session_id] = audio_url_val
+    else:
+        audio_url_val = ""
     await save_session(session)
 
     return StartResponse(
         interviewer_text=text,
-        audio_url=_audio_url(audio_file),
+        audio_url=audio_url_val,
         state=session.state,
         question_count=session.question_count,
         active_dimensions=session.active_dimensions,
@@ -179,17 +184,21 @@ async def respond(session_id: str, body: RespondRequest):
     session.messages.append(iv_msg)
     _last_question[session_id] = reply_text
 
-    # TTS
-    audio_file = await generate_audio(
-        reply_text, session.persona.value, session.profile.language.value, session_id
-    )
+    # TTS — skip in text mode
+    if session.interview_interface == InterviewInterface.VOICE:
+        audio_file = await generate_audio(
+            reply_text, session.persona.value, session.profile.language.value, session_id
+        )
+        respond_audio_url = _audio_url(audio_file)
+    else:
+        respond_audio_url = ""
 
     should_end = session.state in (InterviewState.COMPLETED,)
     await save_session(session)
 
     return RespondResponse(
         interviewer_text=reply_text,
-        audio_url=_audio_url(audio_file),
+        audio_url=respond_audio_url,
         state=session.state,
         question_count=session.question_count,
         is_probe=next_action == "probe",
