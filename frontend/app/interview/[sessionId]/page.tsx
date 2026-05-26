@@ -52,6 +52,7 @@ export default function InterviewRoomPage() {
   const [elapsed, setElapsed] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
   const [showEndDialog, setShowEndDialog] = useState(false);
+  const [ready, setReady] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -132,41 +133,51 @@ export default function InterviewRoomPage() {
     }
   }, [sessionId, router]);
 
-  // Load session and start interview
+  // Load session info on mount
   useEffect(() => {
     let cancelled = false;
 
-    async function init() {
+    async function loadSession() {
       try {
         const session = await api.getSession(sessionId);
         if (cancelled) return;
         setPersona(session.persona);
         setInterviewInterface(session.interview_interface ?? "voice");
-
-        const start = await api.startInterview(sessionId);
-        if (cancelled) return;
-        setInterviewState(start.state);
-        setQuestionCount(start.question_count);
-        setSubtitle(start.interviewer_text);
-        setMessages([{ role: "interviewer", text: start.interviewer_text }]);
-        if (start.audio_url) {
-          setUiState("ai_speaking");
-          playAudio(start.audio_url, () => {
-            setSubtitle("");
-            setUiState("waiting");
-          });
-        } else {
-          setUiState("waiting");
-        }
+        setUiState("loading");
       } catch (e) {
         if (!cancelled) console.error(e);
       }
     }
 
-    init();
+    loadSession();
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
+
+  // Start interview after user clicks "begin" (satisfies browser autoplay policy)
+  async function beginInterview() {
+    setReady(true);
+    setUiState("ai_thinking");
+    try {
+      const start = await api.startInterview(sessionId);
+      setInterviewState(start.state);
+      setQuestionCount(start.question_count);
+      setSubtitle(start.interviewer_text);
+      setMessages([{ role: "interviewer", text: start.interviewer_text }]);
+      if (start.audio_url) {
+        setUiState("ai_speaking");
+        playAudio(start.audio_url, () => {
+          setSubtitle("");
+          setUiState("waiting");
+        });
+      } else {
+        setUiState("waiting");
+      }
+    } catch (e) {
+      console.error(e);
+      setUiState("waiting");
+    }
+  }
 
   // ── MediaRecorder recording ───────────────────────────────────────────────
 
@@ -313,7 +324,22 @@ export default function InterviewRoomPage() {
         </div>
       </div>
 
-      {isVoice ? (
+      {!ready ? (
+        <div className="flex-1 flex flex-col items-center justify-center px-6">
+          <div className="w-24 h-24 rounded-full bg-gradient-to-br from-[#6366F1] to-[#8B5CF6] flex items-center justify-center text-4xl mb-6">
+            {PERSONA_EMOJIS[persona] ?? "👩‍💼"}
+          </div>
+          <p className="font-semibold text-[#111827] text-lg mb-1">{pInfo.name}</p>
+          <p className="text-sm text-[#6B7280] mb-8">{pInfo.title}</p>
+          <button
+            onClick={beginInterview}
+            className="bg-[#6366F1] hover:bg-[#4F46E5] text-white font-semibold px-10 py-3 rounded-xl text-lg transition-colors shadow-md"
+          >
+            开始面试
+          </button>
+          <p className="text-xs text-[#9CA3AF] mt-3">点击后面试官将开始提问</p>
+        </div>
+      ) : isVoice ? (
         /* ── Voice Mode Layout ───────────────────────────────────────────── */
         <>
           <div className="flex-1 flex flex-col items-center justify-center px-6 py-8 overflow-hidden">

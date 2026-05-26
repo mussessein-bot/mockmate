@@ -90,5 +90,5 @@ export const api = {
 
 export function audioUrl(path: string): string {
   if (path.startsWith("http")) return path;
-  return path; // relative path, proxied by Next.js rewrite to localhost:8000
+  return `${BASE}${path}`;
 }
