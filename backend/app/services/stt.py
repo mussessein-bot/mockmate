@@ -16,11 +16,11 @@ class STTError(Exception):
     pass
 
 
-_STT_HEADERS = {
-    "Content-Type": "application/json",
-    "x-api-key": "",           # filled at call time
-    "X-Api-Resource-Id": VOLCANO_STT_RESOURCE,
-}
+# Status codes returned in X-Api-Status-Code response header
+_STATUS_SUCCESS = "20000000"
+_STATUS_PROCESSING = "20000001"
+_STATUS_IN_QUEUE = "20000002"
+_STATUS_SILENT = "20000003"
 
 
 async def transcribe_audio(filename: str, language: str = "zh") -> str:
@@ -35,84 +35,66 @@ async def transcribe_audio(filename: str, language: str = "zh") -> str:
     audio_url = f"{BACKEND_URL}/audio/{filename}"
     req_id = str(uuid.uuid4())
 
-    headers = {
+    # Detect format from filename extension
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "webm"
+
+    # Submit and query share the same auth headers; query omits X-Api-Sequence
+    _base_headers = {
         "Content-Type": "application/json",
-        "x-api-key": VOLCANO_SPEECH_KEY,
+        "X-Api-Key": VOLCANO_SPEECH_KEY,        # new-console key format
         "X-Api-Resource-Id": VOLCANO_STT_RESOURCE,
         "X-Api-Request-Id": req_id,
-        "X-Api-Sequence": "-1",
     }
-
-    # Detect format from filename
-    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "webm"
+    submit_headers = {**_base_headers, "X-Api-Sequence": "-1"}
 
     submit_body = {
         "user": {"uid": "mockmate"},
         "audio": {
             "url": audio_url,
-            "format": ext,
-            "codec": "raw",
-            "rate": 16000,
-            "bits": 16,
-            "channel": 1,
+            "format": ext,          # e.g. webm / mp4 / mp3 / wav / ogg
+            # codec/rate/bits/channel omitted: only relevant for raw PCM;
+            # for compressed audio (webm/opus, mp4/aac) the API auto-detects.
         },
         "request": {
             "model_name": "bigmodel",
             "enable_itn": True,
             "enable_punc": True,
-            "enable_ddc": False,
-            "enable_speaker_info": False,
-            "show_utterances": False,
         },
     }
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         # Step 1: Submit
-        resp = await client.post(VOLCANO_STT_SUBMIT, json=submit_body, headers=headers)
-        resp.raise_for_status()
-        submit_data = resp.json()
+        # Per API docs, response body is empty; status lives in response headers.
+        resp = await client.post(VOLCANO_STT_SUBMIT, json=submit_body, headers=submit_headers)
+        submit_status = resp.headers.get("X-Api-Status-Code", "")
+        submit_msg = resp.headers.get("X-Api-Message", "")
+        logger.info(f"STT submit: status={submit_status} message={submit_msg}")
 
-        logger.info(f"STT submit response: {submit_data}")
-        code = submit_data.get("resp", {}).get("code", 0)  # treat missing as OK
-        if code not in (0, 1000):
-            raise STTError(f"STT submit failed: {submit_data}")
+        if submit_status != _STATUS_SUCCESS:
+            raise STTError(f"STT submit failed: code={submit_status} msg={submit_msg}")
 
-        # Step 2: Poll for result (max 60 seconds, 2s interval)
-        query_headers = {
-            "Content-Type": "application/json",
-            "x-api-key": VOLCANO_SPEECH_KEY,
-            "X-Api-Resource-Id": VOLCANO_STT_RESOURCE,
-            "X-Api-Request-Id": req_id,
-        }
-
+        # Step 2: Poll for result (max 60 s, 2 s interval)
         for attempt in range(30):
             await asyncio.sleep(2)
-            qresp = await client.post(VOLCANO_STT_QUERY, json={}, headers=query_headers)
-            qresp.raise_for_status()
-            qdata = qresp.json()
+            qresp = await client.post(VOLCANO_STT_QUERY, json={}, headers=_base_headers)
+            q_status = qresp.headers.get("X-Api-Status-Code", "")
+            q_msg = qresp.headers.get("X-Api-Message", "")
+            logger.info(f"STT query attempt {attempt}: status={q_status} message={q_msg}")
 
-            logger.info(f"STT query attempt {attempt}: {qdata}")
-
-            # Volcano may return result directly without resp.code
-            if "result" in qdata:
-                result = qdata.get("result", {})
-                utterances = result.get("utterances", [])
-                if utterances:
-                    return " ".join(u.get("text", "") for u in utterances).strip()
-                return result.get("text", "").strip()
-
-            resp_obj = qdata.get("resp", {})
-            q_code = resp_obj.get("code", -1)
-
-            if q_code == 1000:  # still processing
+            if q_status in (_STATUS_PROCESSING, _STATUS_IN_QUEUE):
                 continue
-            if q_code == 0:  # success with resp.code format
+
+            if q_status == _STATUS_SILENT:
+                raise STTError("STT failed: no speech detected in audio")
+
+            if q_status == _STATUS_SUCCESS:
+                qdata = qresp.json()
                 result = qdata.get("result", {})
                 utterances = result.get("utterances", [])
                 if utterances:
                     return " ".join(u.get("text", "") for u in utterances).strip()
                 return result.get("text", "").strip()
-            else:
-                raise STTError(f"STT query failed: {qdata}")
+
+            raise STTError(f"STT query failed: code={q_status} msg={q_msg}")
 
     raise STTError("STT timed out after 60 seconds")
