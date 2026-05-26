@@ -11,24 +11,57 @@ from app.config import (
 )
 from app.core.exceptions import TTSError
 
-# ── Binary protocol constants ────────────────────────────────────────────────
-_VERSION    = 0x01
-_HDR_SIZE   = 0x01   # 1 × 4 bytes = 4-byte header
-_TYPE_CLIENT = 0x01  # FullClientRequest
-_TYPE_SERVER = 0x09  # FullServerResponse  (JSON payload)
-_TYPE_AUDIO  = 0x0B  # AudioOnlyServer     (raw audio bytes)
-_SERIAL_JSON = 0x01
-_COMPRESS_NO = 0x00
-_EVENT_FINISHED = 50  # SessionFinished event code
+# ── Binary protocol constants (per official V3 docs) ──────────────────────────
+_VERSION = 0x01
+_HDR_SIZE = 0x01  # 4-byte header
 
-def _frame(payload: bytes) -> bytes:
+# Client → Server message types
+_TYPE_FULL_CLIENT = 0x01
+# Server → Client message types
+_TYPE_AUDIO_ONLY = 0x0B  # TTSResponse (audio data)
+_TYPE_SERVER = 0x09      # JSON responses (SentenceStart/End, SessionFinished)
+
+# Serialization / compression
+_SERIAL_JSON = 0x01
+_SERIAL_RAW = 0x00
+_COMPRESS_NO = 0x00
+
+# Message type specific flags
+_FLAGS_NO_EVENT = 0x00
+_FLAGS_WITH_EVENT = 0x04  # 0b0100 — event number present in bytes 4-7
+
+# Event codes (server → client)
+EVENT_TTS_SENTENCE_START = 350
+EVENT_TTS_SENTENCE_END = 351
+EVENT_TTS_RESPONSE = 352
+EVENT_SESSION_FINISHED = 152
+
+# Event codes (client → server)
+EVENT_FINISH_CONNECTION = 2
+EVENT_CONNECTION_FINISHED = 52
+
+
+def _frame(payload: bytes, msg_type: int = _TYPE_FULL_CLIENT,
+           flags: int = _FLAGS_NO_EVENT, serial: int = _SERIAL_JSON) -> bytes:
     header = bytes([
         (_VERSION << 4) | _HDR_SIZE,
-        (_TYPE_CLIENT << 4) | 0x00,
-        (_SERIAL_JSON << 4) | _COMPRESS_NO,
+        (msg_type << 4) | flags,
+        (serial << 4) | _COMPRESS_NO,
         0x00,
     ])
     return header + struct.pack(">I", len(payload)) + payload
+
+
+def _finish_connection_frame() -> bytes:
+    """Build a FinishConnection frame (client → server, event=2)."""
+    payload = json.dumps({}).encode("utf-8")
+    header = bytes([
+        (_VERSION << 4) | _HDR_SIZE,
+        (_TYPE_FULL_CLIENT << 4) | _FLAGS_WITH_EVENT,
+        (_SERIAL_JSON << 4) | _COMPRESS_NO,
+        0x00,
+    ])
+    return header + struct.pack(">I", EVENT_FINISH_CONNECTION) + struct.pack(">I", len(payload)) + payload
 
 
 def _voice(persona: str, language: str) -> str:
@@ -80,6 +113,47 @@ async def generate_preview(persona: str, language: str) -> str:
     return filename
 
 
+def _parse_response_frame(raw: bytes):
+    """Parse a V3 binary response frame per official protocol.
+
+    Returns (msg_type, flags, event_code, payload_bytes) or None if too short.
+    Frame layout:
+      [0-3]  header
+      [4-7]  event number (only if flags & 0x04)
+      [8-11] session_id length
+      [12..] session_id
+      then:  payload_length (4B) + payload
+    """
+    if len(raw) < 4:
+        return None
+
+    msg_type = (raw[1] >> 4) & 0x0F
+    flags = raw[1] & 0x0F
+
+    offset = 4
+    event_code = None
+    if flags & 0x04:  # event number present
+        if offset + 4 > len(raw):
+            return None
+        event_code = struct.unpack(">I", raw[offset:offset + 4])[0]
+        offset += 4
+
+    # session_id
+    if offset + 4 > len(raw):
+        return None
+    sid_len = struct.unpack(">I", raw[offset:offset + 4])[0]
+    offset += 4 + sid_len
+
+    # payload
+    if offset + 4 > len(raw):
+        return None
+    payload_len = struct.unpack(">I", raw[offset:offset + 4])[0]
+    offset += 4
+    payload = raw[offset:offset + payload_len]
+
+    return msg_type, flags, event_code, payload
+
+
 async def _synthesize(text: str, speaker: str, output_path) -> None:
     """Core WebSocket TTS → write MP3 to output_path."""
     headers = {
@@ -102,48 +176,62 @@ async def _synthesize(text: str, speaker: str, output_path) -> None:
             additional_headers=headers,
             max_size=10 * 1024 * 1024,
         ) as ws:
+            # Send text request
             await ws.send(_frame(json.dumps(request).encode("utf-8")))
 
             audio_buf = bytearray()
+            session_finished = False
+
             while True:
                 try:
-                    raw = await asyncio.wait_for(ws.recv(), timeout=8.0)
+                    raw = await asyncio.wait_for(ws.recv(), timeout=15.0)
                 except asyncio.TimeoutError:
-                    break  # no more data; stream is done (proxy may drop close frame)
+                    break
                 except websockets.exceptions.ConnectionClosed:
-                    break  # server closed connection normally
-                if not isinstance(raw, (bytes, bytearray)) or len(raw) < 8:
+                    break
+
+                if not isinstance(raw, (bytes, bytearray)) or len(raw) < 4:
                     continue
 
-                msg_type = (raw[1] >> 4) & 0x0F
-                payload_size = struct.unpack(">I", raw[4:8])[0]
-                payload = raw[8 : 8 + payload_size]
+                parsed = _parse_response_frame(raw)
+                if parsed is None:
+                    continue
 
-                if msg_type == _TYPE_AUDIO:
-                    # Each payload has a binary header: [4B meta_len][meta_len B metadata][4B audio_len][audio...]
-                    if len(payload) > 8:
-                        meta_len = struct.unpack(">I", payload[:4])[0]
-                        audio_offset = 4 + meta_len + 4
-                        if audio_offset < len(payload):
-                            audio_buf.extend(payload[audio_offset:])
-                    else:
-                        audio_buf.extend(payload)
+                msg_type, flags, event_code, payload = parsed
+
+                if msg_type == _TYPE_AUDIO_ONLY:
+                    # TTSResponse — raw audio data
+                    audio_buf.extend(payload)
+
                 elif msg_type == _TYPE_SERVER:
-                    try:
-                        # Payload has a binary/text prefix before the JSON object
-                        decoded = payload.decode("utf-8", errors="replace")
-                        json_start = decoded.find("{")
-                        if json_start == -1:
-                            continue
-                        resp = json.loads(decoded[json_start:])
-                        if resp.get("event") == _EVENT_FINISHED:
-                            break
-                        if not resp:  # empty {} is the stream-end sentinel
-                            break
-                        if resp.get("code", 0) not in (0, None):
-                            raise TTSError(f"Volcano TTS error: {resp}")
-                    except (json.JSONDecodeError, KeyError):
-                        continue  # ignore malformed server metadata messages
+                    if event_code == EVENT_SESSION_FINISHED:
+                        # Parse status
+                        try:
+                            resp = json.loads(payload)
+                            if resp.get("status_code", 0) != 20000000:
+                                raise TTSError(f"Volcano TTS error: {resp}")
+                        except (json.JSONDecodeError, KeyError):
+                            pass
+                        session_finished = True
+                        break
+                    elif event_code in (EVENT_TTS_SENTENCE_START, EVENT_TTS_SENTENCE_END):
+                        pass  # informational, skip
+                    else:
+                        # Unknown server event — try to check for errors
+                        try:
+                            resp = json.loads(payload)
+                            if isinstance(resp, dict) and resp.get("code", 0) not in (0, None):
+                                raise TTSError(f"Volcano TTS error: {resp}")
+                        except (json.JSONDecodeError, KeyError):
+                            pass
+
+            # Send FinishConnection if we got SessionFinished
+            if session_finished:
+                try:
+                    await ws.send(_finish_connection_frame())
+                    await asyncio.wait_for(ws.recv(), timeout=5.0)
+                except (asyncio.TimeoutError, websockets.exceptions.ConnectionClosed):
+                    pass
 
     except websockets.exceptions.WebSocketException as e:
         raise TTSError(f"WebSocket error: {e}") from e
