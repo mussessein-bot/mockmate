@@ -35,7 +35,6 @@ async def transcribe_audio(filename: str, language: str = "zh") -> str:
     audio_url = f"{BACKEND_URL}/audio/{filename}"
     req_id = str(uuid.uuid4())
 
-    # Detect format from filename extension
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "webm"
 
     # Submit and query share the same auth headers; query omits X-Api-Sequence
@@ -51,9 +50,8 @@ async def transcribe_audio(filename: str, language: str = "zh") -> str:
         "user": {"uid": "mockmate"},
         "audio": {
             "url": audio_url,
-            "format": ext,          # e.g. webm / mp4 / mp3 / wav / ogg
-            # codec/rate/bits/channel omitted: only relevant for raw PCM;
-            # for compressed audio (webm/opus, mp4/aac) the API auto-detects.
+            "format": ext,
+            "codec": "opus" if ext in ("webm", "ogg") else "raw",
         },
         "request": {
             "model_name": "bigmodel",

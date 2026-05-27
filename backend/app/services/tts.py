@@ -205,10 +205,10 @@ async def _synthesize(text: str, speaker: str, output_path) -> None:
 
                 elif msg_type == _TYPE_SERVER:
                     if event_code == EVENT_SESSION_FINISHED:
-                        # Parse status
                         try:
                             resp = json.loads(payload)
-                            if resp.get("status_code", 0) != 20000000:
+                            status = resp.get("status_code")
+                            if status is not None and status != 20000000:
                                 raise TTSError(f"Volcano TTS error: {resp}")
                         except (json.JSONDecodeError, KeyError):
                             pass

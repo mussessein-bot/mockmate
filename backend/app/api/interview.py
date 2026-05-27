@@ -18,6 +18,7 @@ from app.storage.session_store import load_session, save_session
 from app.core.exceptions import SessionNotFoundError
 from app.core.models import InterviewInterface
 from app.config import AUDIO_DIR
+from app.core.exceptions import TTSError
 import asyncio
 import aiofiles
 
@@ -68,9 +69,12 @@ async def start_interview(session_id: str):
     _last_question[session_id] = text
 
     if session.interview_interface == InterviewInterface.VOICE:
-        audio_file = await generate_audio(text, session.persona.value, session.profile.language.value, session_id)
-        audio_url_val = _audio_url(audio_file)
-        _last_audio_url[session_id] = audio_url_val
+        try:
+            audio_file = await generate_audio(text, session.persona.value, session.profile.language.value, session_id)
+            audio_url_val = _audio_url(audio_file)
+            _last_audio_url[session_id] = audio_url_val
+        except TTSError as e:
+            raise HTTPException(status_code=502, detail=f"TTS failed: {e}")
     else:
         audio_url_val = ""
     await save_session(session)
@@ -186,10 +190,13 @@ async def respond(session_id: str, body: RespondRequest):
 
     # TTS — skip in text mode
     if session.interview_interface == InterviewInterface.VOICE:
-        audio_file = await generate_audio(
-            reply_text, session.persona.value, session.profile.language.value, session_id
-        )
-        respond_audio_url = _audio_url(audio_file)
+        try:
+            audio_file = await generate_audio(
+                reply_text, session.persona.value, session.profile.language.value, session_id
+            )
+            respond_audio_url = _audio_url(audio_file)
+        except TTSError as e:
+            raise HTTPException(status_code=502, detail=f"TTS failed: {e}")
     else:
         respond_audio_url = ""
 
@@ -226,17 +233,27 @@ async def resume_interview(session_id: str):
 @router.get("/interview/{session_id}/replay-audio", response_model=ReplayAudioResponse)
 async def replay_audio(session_id: str):
     session = await _get_session(session_id)
-    # Find most recent interviewer message audio
     from app.services.tts import _current_audio
     filename = _current_audio.get(session_id)
+    # Fallback: find the latest audio file for this session on disk
     if not filename or not (AUDIO_DIR / filename).exists():
-        raise HTTPException(status_code=404, detail="No audio available")
+        matches = sorted(
+            AUDIO_DIR.glob(f"{session_id}_*.mp3"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        if not matches:
+            raise HTTPException(status_code=404, detail="No audio available")
+        filename = matches[0].name
     return ReplayAudioResponse(audio_url=_audio_url(filename))
 
 
 @router.post("/tts/preview", response_model=TTSPreviewResponse)
 async def tts_preview(body: TTSPreviewRequest):
-    filename = await generate_preview(body.persona, body.language)
+    try:
+        filename = await generate_preview(body.persona, body.language)
+    except TTSError as e:
+        raise HTTPException(status_code=502, detail=f"TTS failed: {e}")
     return TTSPreviewResponse(audio_url=_audio_url(filename))
 
 
