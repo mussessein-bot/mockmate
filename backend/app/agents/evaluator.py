@@ -1,10 +1,40 @@
+import re
+import json
 from app.agents.base import BaseAgent
 from app.core.models import InterviewSession, DimensionScore, EvaluationResult
 from app.core.memory import merge_profile_update, profile_to_text
 from app.core.state_machine import can_probe
 from app.core.dimensions import DIMENSION_POOL
-from app.llm.client import chat_completion_json
+from app.core.exceptions import LLMError
+from app.llm.client import chat_completion
 from app.llm.prompts.evaluator_prompts import build_evaluator_prompt
+
+
+def _extract_json(text: str) -> dict:
+    """Extract the last complete JSON object from a CoT-style LLM response."""
+    # Try markdown code fence first
+    m = re.search(r'```(?:json)?\s*\n?(.*?)\n?\s*```', text, re.DOTALL)
+    if m:
+        try:
+            return json.loads(m.group(1).strip())
+        except json.JSONDecodeError:
+            pass
+    # Find the last complete { ... } block by scanning backwards
+    last_close = text.rfind('}')
+    if last_close == -1:
+        raise LLMError(f"No JSON found in evaluator response: {text[:200]}")
+    depth = 0
+    for i in range(last_close, -1, -1):
+        if text[i] == '}':
+            depth += 1
+        elif text[i] == '{':
+            depth -= 1
+            if depth == 0:
+                try:
+                    return json.loads(text[i:last_close + 1])
+                except json.JSONDecodeError as e:
+                    raise LLMError(f"Malformed JSON in evaluator response: {e}") from e
+    raise LLMError(f"Malformed JSON in evaluator response: {text[:200]}")
 
 
 class EvaluatorAgent(BaseAgent):
@@ -32,7 +62,8 @@ class EvaluatorAgent(BaseAgent):
             can_probe=probe_allowed,
         )
 
-        data = await chat_completion_json(messages, temperature=0.2)
+        raw = await chat_completion(messages, temperature=0.1)
+        data = _extract_json(raw)
 
         # Parse dimension scores
         scores = []

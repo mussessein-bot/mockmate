@@ -20,16 +20,55 @@ def _grade(score: float, language: str) -> str:
     return table[-1][1]
 
 
-async def _model_answer(question: str, language: str) -> str:
+def _weakest_dim(ev: EvaluationResult) -> str | None:
+    if not ev.dimension_scores:
+        return None
+    return min(ev.dimension_scores, key=lambda d: d.score).dimension
+
+
+async def _model_answer(question: str, language: str, dimension_focus: str | None = None) -> str:
     if language == "zh":
-        prompt = f"请用STAR法则，为以下面试题生成一个简洁的示范回答（150字以内）：\n{question}"
-        sys_msg = "你是一位面试辅导专家。"
+        focus_hint = f"\n特别关注维度：{dimension_focus}（请在回答中用具体例子体现这一维度的亮点）。" if dimension_focus else ""
+        draft_prompt = (
+            f"请为以下面试题生成一个示范回答（150字以内）。"
+            f"语言自然流畅，避免显式的'情境/任务/行动/结果'标签，用真实对话的方式讲故事。{focus_hint}\n\n问题：{question}"
+        )
+        sys_msg = "你是一位面试辅导专家，擅长用真实、有说服力的方式呈现面试故事。"
     else:
-        prompt = f"Using the STAR method, write a concise model answer (under 150 words) for:\n{question}"
-        sys_msg = "You are an expert interview coach."
+        focus_hint = f"\nPay special attention to dimension: {dimension_focus} (use a concrete example to highlight this dimension)." if dimension_focus else ""
+        draft_prompt = (
+            f"Write a model answer (under 150 words) for the interview question below. "
+            f"Make it natural and conversational — avoid explicit 'Situation/Task/Action/Result' labels; tell it as a real story.{focus_hint}\n\nQuestion: {question}"
+        )
+        sys_msg = "You are an expert interview coach who crafts authentic, compelling interview stories."
+
+    draft = await chat_completion(
+        [{"role": "system", "content": sys_msg}, {"role": "user", "content": draft_prompt}],
+        temperature=0.7,
+    )
+
+    if language == "zh":
+        critique_prompt = (
+            f"以下是一个面试示范回答的草稿：\n\n{draft}\n\n"
+            f"请从以下三个角度批判并改进它：\n"
+            f"1. 是否有具体的数字或量化结果？（没有则补充虚拟但合理的数据）\n"
+            f"2. 候选人的个人贡献是否清晰？（有'我们'但无个人角色则修正）\n"
+            f"3. 表达是否自然流畅？（有模板痕迹则改写）\n"
+            f"直接输出改进后的最终版本（150字以内），不要输出批判分析过程。"
+        )
+    else:
+        critique_prompt = (
+            f"Here is a draft model answer:\n\n{draft}\n\n"
+            f"Critique and improve it on three dimensions:\n"
+            f"1. Does it include specific numbers or quantified results? (If not, add plausible data)\n"
+            f"2. Is the candidate's personal contribution clear? (Fix vague 'we' with explicit individual role)\n"
+            f"3. Does it sound natural and conversational? (Rewrite any template-sounding parts)\n"
+            f"Output only the improved final version (under 150 words). Do not show the critique."
+        )
+
     return await chat_completion(
-        [{"role": "system", "content": sys_msg}, {"role": "user", "content": prompt}],
-        temperature=0.5,
+        [{"role": "system", "content": sys_msg}, {"role": "user", "content": critique_prompt}],
+        temperature=0.7,
     )
 
 
@@ -80,9 +119,9 @@ async def finalize_session(session_id: str):
     )
     grade = _grade(total_score, language)
 
-    # Generate model answers in parallel
+    # Generate model answers in parallel (two-round self-critique, focused on weakest dimension)
     answers = await asyncio.gather(
-        *[_model_answer(e.question_text, language) for e in session.evaluations]
+        *[_model_answer(e.question_text, language, _weakest_dim(e)) for e in session.evaluations]
     )
     for ev, ans in zip(session.evaluations, answers):
         ev.model_answer = ans

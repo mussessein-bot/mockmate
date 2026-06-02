@@ -1,5 +1,7 @@
 import uuid
+import json
 from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi.responses import StreamingResponse
 from app.api.schemas import (
     RespondRequest, RespondResponse, StartResponse,
     TTSPreviewRequest, TTSPreviewResponse, ReplayAudioResponse, TranscribeResponse,
@@ -169,6 +171,7 @@ async def respond(session_id: str, body: RespondRequest):
             topic=topic,
             is_probe=is_probe,
             probe_reason=eval_result.probe_reason,
+            question_type=decision.get("question_type", "behavioral"),
         )
 
         # Advance question count for the new (upcoming) question
@@ -214,6 +217,135 @@ async def respond(session_id: str, body: RespondRequest):
         evaluation=eval_result,
         should_end=should_end,
     )
+
+
+@router.post("/interview/{session_id}/respond/stream")
+async def respond_stream(session_id: str, body: RespondRequest):
+    """Text-mode only: SSE streaming endpoint.
+    Sends a 'meta' event first with evaluation/state data,
+    then streams interviewer text chunks, then a 'done' event.
+    """
+    session = await _get_session(session_id)
+
+    if session.state in (InterviewState.COMPLETED, InterviewState.INIT):
+        raise HTTPException(status_code=400, detail=f"Cannot respond in state {session.state}")
+    if _paused.get(session_id):
+        raise HTTPException(status_code=400, detail="Interview is paused")
+
+    transcript = body.transcript.strip()
+    if not transcript:
+        raise HTTPException(status_code=422, detail="Transcript is empty")
+
+    # Add candidate message
+    candidate_msg = Message(
+        role=MessageRole.CANDIDATE,
+        content=transcript,
+        metadata={"question_index": session.question_count, "state_at_time": session.state.value},
+    )
+    session.messages.append(candidate_msg)
+
+    last_q = _last_question.get(session_id, "")
+    is_probe_q = session.state == InterviewState.DEEP_DIVE
+
+    _sse_headers = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+
+    def _sse_error(msg: str):
+        async def _gen():
+            yield f"data: {json.dumps({'type': 'error', 'message': msg}, ensure_ascii=False)}\n\n"
+        return StreamingResponse(_gen(), media_type="text/event-stream", headers=_sse_headers)
+
+    try:
+        # Step 1: Evaluate
+        evaluator = EvaluatorAgent(session)
+        eval_result, profile_update = await evaluator.evaluate(
+            question=last_q,
+            answer=transcript,
+            question_index=session.question_count,
+            is_probe_question=is_probe_q,
+        )
+        session.candidate_profile_json = merge_profile_update(session.candidate_profile_json, profile_update)
+        session.evaluations.append(eval_result)
+
+        # Step 2: Strategy
+        strategy = StrategyAgent(session)
+        decision = await strategy.decide(
+            is_probe_triggered=eval_result.is_probe_triggered,
+            probe_reason=eval_result.probe_reason,
+        )
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return _sse_error(str(e))
+
+    next_action = decision["next_action"]
+    topic = decision["topic"]
+
+    # Step 3: State transition
+    if next_action == "close":
+        session.state = InterviewState.CLOSING
+    else:
+        new_state = transition_after_answer(session, next_action)
+        if next_action == "probe":
+            apply_probe(session)
+        session.state = new_state
+
+    is_closing = session.state == InterviewState.CLOSING
+    is_probe = next_action == "probe"
+
+    async def event_stream():
+        full_text = ""
+
+        # Send metadata first so frontend can update state immediately
+        meta = {
+            "type": "meta",
+            "state": session.state.value,
+            "question_count": session.question_count,
+            "is_probe": is_probe,
+            "probe_reason": eval_result.probe_reason,
+            "should_end": is_closing,
+            "evaluation": eval_result.model_dump(),
+            "active_dimensions": session.active_dimensions,
+        }
+        yield f"data: {json.dumps(meta, ensure_ascii=False)}\n\n"
+
+        # Stream interviewer text
+        interviewer = InterviewerAgent(session)
+        if is_closing:
+            closing_text = await interviewer.generate_closing()
+            full_text = closing_text
+            yield f"data: {json.dumps({'type': 'chunk', 'text': closing_text}, ensure_ascii=False)}\n\n"
+        else:
+            async for chunk in interviewer.stream_response(
+                next_action=next_action,
+                topic=topic,
+                is_probe=is_probe,
+                probe_reason=eval_result.probe_reason,
+                question_type=decision.get("question_type", "behavioral"),
+            ):
+                full_text += chunk
+                yield f"data: {json.dumps({'type': 'chunk', 'text': chunk}, ensure_ascii=False)}\n\n"
+
+        # Persist BEFORE sending done so next request always sees updated state
+        if is_closing:
+            session.state = InterviewState.COMPLETED
+        elif not is_probe:
+            apply_question(session)
+
+        iv_msg = Message(
+            role=MessageRole.INTERVIEWER,
+            content=full_text,
+            metadata={
+                "question_index": session.question_count,
+                "state_at_time": session.state.value,
+                "is_probe": is_probe,
+            },
+        )
+        session.messages.append(iv_msg)
+        _last_question[session_id] = full_text
+        await save_session(session)
+
+        yield f"data: {json.dumps({'type': 'done'}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream", headers=_sse_headers)
 
 
 @router.post("/interview/{session_id}/pause")

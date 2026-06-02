@@ -13,11 +13,16 @@ class StrategyAgent(BaseAgent):
         probe_reason: str | None,
     ) -> dict:
         """
-        Returns {next_action, topic, dimension_focus, reasoning}.
+        Returns {next_action, topic, dimension_focus, question_type, reasoning}.
         next_action: "continue" | "probe" | "close"
+        question_type: "behavioral" | "situational" | "quantitative_probe" | "role_challenge"
         """
         profile_text = profile_to_text(self.session.candidate_profile_json, self.language)
         probe_allowed = can_probe(self.session)
+
+        topics_covered = self.session.candidate_profile_json.get("topics_covered", [])
+        recent_non_probe = [e for e in self.session.evaluations if not e.is_probe]
+        recent_scores = [e.overall_score for e in recent_non_probe[-3:]]
 
         messages = build_strategy_prompt(
             state=self.session.state.value,
@@ -33,6 +38,8 @@ class StrategyAgent(BaseAgent):
             profile_text=profile_text,
             recent_messages=self.recent_messages,
             language=self.language,
+            topics_covered=topics_covered,
+            recent_scores=recent_scores,
         )
 
         data = await chat_completion_json(messages, temperature=0.4)
@@ -56,5 +63,6 @@ class StrategyAgent(BaseAgent):
             "next_action": next_action,
             "topic": data.get("topic", ""),
             "dimension_focus": data.get("dimension_focus", []),
+            "question_type": data.get("question_type", "behavioral"),
             "reasoning": data.get("reasoning", ""),
         }
