@@ -4,6 +4,7 @@ import type {
   RespondResponse,
   SessionSummary,
   InterviewInterface,
+  CorrectionResponse,
 } from "./types";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -55,6 +56,12 @@ export const api = {
 
   getFeedback: (sessionId: string) =>
     apiFetch<SessionSummary>(`/api/sessions/${sessionId}/feedback`),
+
+  submitCorrection: (sessionId: string, tags: string[], note?: string) =>
+    apiFetch<CorrectionResponse>(`/api/interview/${sessionId}/correction`, {
+      method: "POST",
+      body: JSON.stringify({ tags, note: note || null }),
+    }),
 
   ttsPreview: (persona: string, language: string) =>
     apiFetch<{ audio_url: string }>("/api/tts/preview", {

@@ -23,4 +23,15 @@ async def init_db():
                 updated_at   TEXT NOT NULL
             )
         """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS correction_log (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id    TEXT NOT NULL,
+                target_role   TEXT NOT NULL,
+                question_text TEXT NOT NULL,
+                tags          TEXT NOT NULL,
+                note          TEXT,
+                created_at    TEXT NOT NULL
+            )
+        """)
         await db.commit()

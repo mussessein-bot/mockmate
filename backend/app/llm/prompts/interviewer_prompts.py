@@ -175,6 +175,7 @@ def build_interviewer_prompt(
     is_opening: bool = False,
     is_closing: bool = False,
     question_type: str = "behavioral",
+    constraints: list[str] | None = None,
 ) -> list[dict]:
     system_map = PERSONA_SYSTEM_ZH if language == "zh" else PERSONA_SYSTEM_EN
     system = system_map[persona]
@@ -213,6 +214,11 @@ def build_interviewer_prompt(
         else:
             qtype_hint = _QTYPE_HINT_EN.get(question_type, _QTYPE_HINT_EN["behavioral"])
             instruction = f"Ask the next interview question. Topic: {topic}. Question type: {qtype_hint}. Target role: {target_role}. Briefly acknowledge the previous answer (1 sentence), then ask the question in the specified format."
+
+    if constraints:
+        prefix = ("注意：根据用户反馈，请避免以下问题：\n" if language == "zh" else "Note: Based on user feedback, avoid the following:\n")
+        prefix += "\n".join(f"- {c}" for c in constraints) + "\n\n"
+        instruction = prefix + instruction
 
     messages.append({"role": "user", "content": instruction})
     return messages

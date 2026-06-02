@@ -108,9 +108,11 @@ class InterviewSession(BaseModel):
     max_questions:      int = 8
     probe_count:        int = 0        # total probes used (max 2)
     last_was_probe:     bool = False   # used to block probing a probe answer
-    active_dimensions:  list[str] = Field(default_factory=list)
-    candidate_profile_json: dict = Field(default_factory=dict)
-    evaluations:        list[EvaluationResult] = Field(default_factory=list)
-    summary:            Optional[SessionSummary] = None
+    active_dimensions:       list[str] = Field(default_factory=list)
+    candidate_profile_json:  dict      = Field(default_factory=dict)
+    evaluations:             list[EvaluationResult] = Field(default_factory=list)
+    summary:                 Optional[SessionSummary] = None
+    interviewer_constraints: list[str] = Field(default_factory=list)
+    last_strategy_decision:  dict      = Field(default_factory=dict)
     created_at:         datetime = Field(default_factory=datetime.utcnow)
     updated_at:         datetime = Field(default_factory=datetime.utcnow)

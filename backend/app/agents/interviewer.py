@@ -14,6 +14,9 @@ class InterviewerAgent(BaseAgent):
         opening_map = OPENING_ZH if self.language == "zh" else OPENING_EN
         return opening_map[self.session.persona.value]
 
+    def _constraints(self) -> list[str] | None:
+        return self.session.interviewer_constraints or None
+
     async def generate_closing(self) -> str:
         messages = build_interviewer_prompt(
             persona=self.session.persona.value,
@@ -50,6 +53,7 @@ class InterviewerAgent(BaseAgent):
             interview_type=self.session.interview_type.value,
             recent_messages=self.recent_messages,
             question_type=question_type,
+            constraints=self._constraints(),
         )
         return await chat_completion(messages, temperature=0.75)
 
@@ -73,6 +77,7 @@ class InterviewerAgent(BaseAgent):
             interview_type=self.session.interview_type.value,
             recent_messages=self.recent_messages,
             question_type=question_type,
+            constraints=self._constraints(),
         )
         async for chunk in chat_completion_stream(messages, temperature=0.75):
             yield chunk

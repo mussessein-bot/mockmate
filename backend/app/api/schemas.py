@@ -68,3 +68,14 @@ class ReplayAudioResponse(BaseModel):
 
 class ParsePDFResponse(BaseModel):
     text: str
+
+
+class CorrectionRequest(BaseModel):
+    tags: list[str]
+    note: Optional[str] = None
+
+
+class CorrectionResponse(BaseModel):
+    new_question: str
+    audio_url:    str
+    question_count: int

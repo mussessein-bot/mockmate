@@ -81,6 +81,12 @@ export interface RespondResponse {
   should_end: boolean;
 }
 
+export interface CorrectionResponse {
+  new_question: string;
+  audio_url: string;
+  question_count: number;
+}
+
 // localStorage history record
 export interface HistoryRecord {
   session_id: string;

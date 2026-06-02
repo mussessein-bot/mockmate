@@ -5,6 +5,7 @@ from fastapi.responses import StreamingResponse
 from app.api.schemas import (
     RespondRequest, RespondResponse, StartResponse,
     TTSPreviewRequest, TTSPreviewResponse, ReplayAudioResponse, TranscribeResponse,
+    CorrectionRequest, CorrectionResponse,
 )
 from app.core.models import InterviewSession, InterviewState, Message, MessageRole
 from app.core.state_machine import (
@@ -204,6 +205,13 @@ async def respond(session_id: str, body: RespondRequest):
         respond_audio_url = ""
 
     should_end = session.state in (InterviewState.COMPLETED,)
+    session.last_strategy_decision = {
+        "next_action": next_action,
+        "topic": topic,
+        "question_type": decision.get("question_type", "behavioral"),
+        "is_probe": next_action == "probe",
+        "probe_reason": eval_result.probe_reason,
+    }
     await save_session(session)
 
     return RespondResponse(
@@ -341,6 +349,13 @@ async def respond_stream(session_id: str, body: RespondRequest):
         )
         session.messages.append(iv_msg)
         _last_question[session_id] = full_text
+        session.last_strategy_decision = {
+            "next_action": next_action,
+            "topic": topic,
+            "question_type": decision.get("question_type", "behavioral"),
+            "is_probe": is_probe,
+            "probe_reason": eval_result.probe_reason,
+        }
         await save_session(session)
 
         yield f"data: {json.dumps({'type': 'done'}, ensure_ascii=False)}\n\n"
@@ -387,6 +402,104 @@ async def tts_preview(body: TTSPreviewRequest):
     except TTSError as e:
         raise HTTPException(status_code=502, detail=f"TTS failed: {e}")
     return TTSPreviewResponse(audio_url=_audio_url(filename))
+
+
+@router.post("/interview/{session_id}/correction", response_model=CorrectionResponse)
+async def correct_question(session_id: str, body: CorrectionRequest):
+    import json as _json
+    from datetime import datetime
+    from app.storage.database import get_db
+
+    session = await _get_session(session_id)
+
+    if session.state in (InterviewState.COMPLETED, InterviewState.INIT):
+        raise HTTPException(status_code=400, detail=f"Cannot correct in state {session.state}")
+
+    # Find and remove the last INTERVIEWER message (the current pending question)
+    last_iv_idx = next(
+        (i for i in range(len(session.messages) - 1, -1, -1)
+         if session.messages[i].role == MessageRole.INTERVIEWER),
+        None,
+    )
+    if last_iv_idx is None:
+        raise HTTPException(status_code=400, detail="No interviewer question to correct")
+
+    bad_question = session.messages[last_iv_idx].content
+    session.messages.pop(last_iv_idx)
+
+    # Build constraint from this correction and add to session constraints
+    tag_str = "、".join(body.tags)
+    constraint = f"问题「{bad_question[:60]}{'…' if len(bad_question) > 60 else ''}」被标记为：{tag_str}"
+    if body.note:
+        constraint += f"（补充说明：{body.note}）"
+    session.interviewer_constraints.append(constraint)
+
+    # Persist to correction_log for cross-session RLHF
+    async with get_db() as db:
+        await db.execute(
+            "INSERT INTO correction_log (session_id, target_role, question_text, tags, note, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                session_id,
+                session.profile.target_role,
+                bad_question,
+                _json.dumps(body.tags, ensure_ascii=False),
+                body.note,
+                datetime.utcnow().isoformat(),
+            ),
+        )
+        await db.commit()
+
+    # Re-generate question using saved strategy decision (or fallback defaults)
+    sd = session.last_strategy_decision
+    next_action = sd.get("next_action", "continue")
+    topic = sd.get("topic", session.profile.target_role)
+    question_type = sd.get("question_type", "behavioral")
+    is_probe = sd.get("is_probe", False)
+    probe_reason = sd.get("probe_reason")
+
+    # Don't re-apply probe/question count — this is a replacement, not a new step
+    interviewer = InterviewerAgent(session)
+    new_text = await interviewer.generate_response(
+        next_action=next_action,
+        topic=topic,
+        is_probe=is_probe,
+        probe_reason=probe_reason,
+        question_type=question_type,
+    )
+
+    # Append new question to history
+    iv_msg = Message(
+        role=MessageRole.INTERVIEWER,
+        content=new_text,
+        metadata={
+            "question_index": session.question_count,
+            "state_at_time": session.state.value,
+            "is_probe": is_probe,
+            "is_replacement": True,
+        },
+    )
+    session.messages.append(iv_msg)
+    _last_question[session_id] = new_text
+
+    # TTS — skip in text mode
+    if session.interview_interface == InterviewInterface.VOICE:
+        try:
+            audio_file = await generate_audio(
+                new_text, session.persona.value, session.profile.language.value, session_id
+            )
+            audio_url_val = _audio_url(audio_file)
+        except TTSError as e:
+            raise HTTPException(status_code=502, detail=f"TTS failed: {e}")
+    else:
+        audio_url_val = ""
+
+    await save_session(session)
+
+    return CorrectionResponse(
+        new_question=new_text,
+        audio_url=audio_url_val,
+        question_count=session.question_count,
+    )
 
 
 @router.post("/interview/{session_id}/transcribe", response_model=TranscribeResponse)

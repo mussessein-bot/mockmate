@@ -34,6 +34,8 @@ const PERSONA_EMOJIS: Record<string, string> = {
   alex: "🧑‍🎨",
 };
 
+const CORRECTION_TAGS = ["问题不够清晰", "与我的岗位无关", "重复了之前的问题", "难度不合适", "其他"];
+
 export default function InterviewRoomPage() {
   const router = useRouter();
   const params = useParams();
@@ -53,6 +55,11 @@ export default function InterviewRoomPage() {
   const [isPaused, setIsPaused] = useState(false);
   const [showEndDialog, setShowEndDialog] = useState(false);
   const [ready, setReady] = useState(false);
+  const [streamingText, setStreamingText] = useState(""); // text mode SSE streaming buffer
+  const [correctionOpen, setCorrectionOpen] = useState(false);
+  const [correctionTags, setCorrectionTags] = useState<string[]>([]);
+  const [correctionNote, setCorrectionNote] = useState("");
+  const [correctionStatus, setCorrectionStatus] = useState<string | null>(null);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -69,10 +76,25 @@ export default function InterviewRoomPage() {
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [isPaused]);
 
-  // Scroll chat to bottom on new messages
+  // Scroll chat to bottom on new messages or streaming updates
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, streamingText]);
+
+  function fakeStreamText(text: string, onUpdate: (partial: string) => void): Promise<void> {
+    return new Promise((resolve) => {
+      let i = 0;
+      const CHUNK = 4;
+      const DELAY = 25;
+      const tick = () => {
+        i = Math.min(i + CHUNK, text.length);
+        onUpdate(text.slice(0, i));
+        if (i < text.length) setTimeout(tick, DELAY);
+        else resolve();
+      };
+      setTimeout(tick, DELAY);
+    });
+  }
 
   function playAudio(url: string, onEnd?: () => void) {
     if (audioRef.current) {
@@ -90,11 +112,80 @@ export default function InterviewRoomPage() {
   const handleRespond = useCallback(async (text: string) => {
     if (!text.trim()) return;
     setUiState("ai_thinking");
-    setSubtitle(text); // voice mode: show candidate text briefly
-
-    // Text mode: add candidate message
+    setSubtitle(text);
     setMessages(prev => [...prev, { role: "candidate", text }]);
 
+    if (interviewInterface === "text") {
+      // Text mode: SSE streaming path
+      const base = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+      let accumulated = "";
+      let shouldEnd = false;
+      let isProbeVal = false;
+      try {
+        const res = await fetch(`${base}/api/interview/${sessionId}/respond/stream`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ transcript: text }),
+        });
+        if (!res.ok) throw new Error(`Stream error: ${res.status}`);
+
+        const reader = res.body!.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() ?? "";
+
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            const data = JSON.parse(line.slice(6));
+
+            if (data.type === "error") {
+              console.error("SSE error:", data.message);
+              setStreamingText("");
+              setUiState("waiting");
+              break;
+            } else if (data.type === "meta") {
+              setInterviewState(data.state);
+              setQuestionCount(data.question_count);
+              setIsProbe(data.is_probe);
+              isProbeVal = data.is_probe;
+              shouldEnd = data.should_end;
+            } else if (data.type === "chunk") {
+              accumulated += data.text;
+              setStreamingText(accumulated);
+            } else if (data.type === "done") {
+              setStreamingText("");
+              setMessages(prev => [...prev, {
+                role: "interviewer",
+                text: accumulated,
+                isProbe: isProbeVal,
+              }]);
+              if (shouldEnd) {
+                await api.finalize(sessionId);
+                router.push(`/feedback/${sessionId}`);
+              } else {
+                setUiState("waiting");
+              }
+            }
+          }
+        }
+        // Stream closed — rescue UI if done event was never received
+        setStreamingText("");
+        setUiState(prev => prev === "ai_thinking" ? "waiting" : prev);
+      } catch (e) {
+        console.error(e);
+        setStreamingText("");
+        setUiState("waiting");
+      }
+      return;
+    }
+
+    // Voice mode: non-streaming path (unchanged)
     try {
       const res: RespondResponse = await api.respond(sessionId, text);
       setInterviewState(res.state);
@@ -131,7 +222,7 @@ export default function InterviewRoomPage() {
       console.error(e);
       setUiState("waiting");
     }
-  }, [sessionId, router]);
+  }, [sessionId, router, interviewInterface]);
 
   // Load session info on mount
   useEffect(() => {
@@ -162,15 +253,20 @@ export default function InterviewRoomPage() {
       const start = await api.startInterview(sessionId);
       setInterviewState(start.state);
       setQuestionCount(start.question_count);
-      setSubtitle(start.interviewer_text);
-      setMessages([{ role: "interviewer", text: start.interviewer_text }]);
       if (start.audio_url) {
+        // Voice mode
+        setSubtitle(start.interviewer_text);
+        setMessages([{ role: "interviewer", text: start.interviewer_text }]);
         setUiState("ai_speaking");
         playAudio(start.audio_url, () => {
           setSubtitle("");
           setUiState("waiting");
         });
       } else {
+        // Text mode: simulate streaming for opening message
+        await fakeStreamText(start.interviewer_text, (partial) => setStreamingText(partial));
+        setStreamingText("");
+        setMessages([{ role: "interviewer", text: start.interviewer_text }]);
         setUiState("waiting");
       }
     } catch (e) {
@@ -201,7 +297,12 @@ export default function InterviewRoomPage() {
         try {
           const { transcript } = await api.transcribe(sessionId, blob, ext);
           if (transcript.trim()) {
-            await handleRespond(transcript);
+            if (interviewInterface === "text") {
+              setTextInput(prev => prev.trim() ? prev.trim() + " " + transcript : transcript);
+              setUiState("waiting");
+            } else {
+              await handleRespond(transcript);
+            }
           } else {
             setUiState("waiting");
           }
@@ -237,6 +338,57 @@ export default function InterviewRoomPage() {
     if (!text || uiState !== "waiting") return;
     setTextInput("");
     handleRespond(text);
+  }
+
+  // ── Correction ────────────────────────────────────────────────────────────
+
+  function toggleCorrectionTag(tag: string) {
+    setCorrectionTags(prev =>
+      prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
+    );
+  }
+
+  async function handleCorrection() {
+    if (correctionTags.length === 0) return;
+    setCorrectionOpen(false);
+    setUiState("ai_thinking");
+    setCorrectionStatus("已记录反馈，正在重新生成问题...");
+
+    // Optimistically remove last interviewer bubble from chat
+    setMessages(prev => {
+      for (let i = prev.length - 1; i >= 0; i--) {
+        if (prev[i].role === "interviewer") {
+          return prev.filter((_, idx) => idx !== i);
+        }
+      }
+      return prev;
+    });
+
+    try {
+      const result = await api.submitCorrection(sessionId, correctionTags, correctionNote || undefined);
+      setCorrectionStatus(null);
+      setCorrectionTags([]);
+      setCorrectionNote("");
+
+      if (isVoice && result.audio_url) {
+        setSubtitle(result.new_question);
+        setMessages(prev => [...prev, { role: "interviewer", text: result.new_question }]);
+        setUiState("ai_speaking");
+        playAudio(result.audio_url, () => {
+          setSubtitle("");
+          setUiState("waiting");
+        });
+      } else {
+        await fakeStreamText(result.new_question, (partial) => setStreamingText(partial));
+        setStreamingText("");
+        setMessages(prev => [...prev, { role: "interviewer", text: result.new_question }]);
+        setUiState("waiting");
+      }
+    } catch (e) {
+      console.error(e);
+      setCorrectionStatus(null);
+      setUiState("waiting");
+    }
   }
 
   // ── Misc controls ─────────────────────────────────────────────────────────
@@ -393,6 +545,16 @@ export default function InterviewRoomPage() {
                 <span className="text-xs">重播</span>
               </button>
 
+              {/* Voice mode correction trigger */}
+              <button
+                onClick={() => setCorrectionOpen(v => !v)}
+                disabled={!canInteract || questionCount === 0}
+                className="flex flex-col items-center gap-1 text-[#6B7280] hover:text-[#F59E0B] disabled:text-[#D1D5DB] transition-colors"
+              >
+                <div className="w-10 h-10 rounded-full border border-current flex items-center justify-center text-base">🚩</div>
+                <span className="text-xs">标记此题</span>
+              </button>
+
               <button
                 onClick={toggleMic}
                 disabled={!canInteract}
@@ -418,8 +580,51 @@ export default function InterviewRoomPage() {
               </button>
             </div>
 
-            {uiState === "waiting" && (
+            {uiState === "waiting" && !correctionOpen && (
               <p className="text-center text-xs text-[#9CA3AF] mt-3">点击麦克风开始录音，再次点击停止并发送</p>
+            )}
+            {/* Voice mode correction panel */}
+            {correctionOpen && (
+              <div className="mx-4 mt-3 bg-[#FFFBF5] border border-[#FDE68A] rounded-xl p-4 text-sm">
+                <p className="text-[#92400E] font-medium mb-3">这道题有什么问题？（可多选）</p>
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {CORRECTION_TAGS.map(tag => (
+                    <button
+                      key={tag}
+                      onClick={() => toggleCorrectionTag(tag)}
+                      className={`px-3 py-1.5 rounded-full border text-xs transition-colors ${
+                        correctionTags.includes(tag)
+                          ? "bg-[#F59E0B] border-[#F59E0B] text-white"
+                          : "bg-white border-[#E5E7EB] text-[#374151] hover:border-[#F59E0B]"
+                      }`}
+                    >
+                      {tag}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="text"
+                  placeholder="补充说明（选填）"
+                  value={correctionNote}
+                  onChange={e => setCorrectionNote(e.target.value)}
+                  className="w-full border border-[#E5E7EB] rounded-lg px-3 py-2 text-xs mb-3 focus:outline-none focus:border-[#F59E0B]"
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => { setCorrectionOpen(false); setCorrectionTags([]); setCorrectionNote(""); }}
+                    className="flex-1 border border-[#E5E7EB] text-[#6B7280] py-2 rounded-lg text-xs hover:bg-[#F9FAFB] transition-colors"
+                  >
+                    取消
+                  </button>
+                  <button
+                    onClick={handleCorrection}
+                    disabled={correctionTags.length === 0}
+                    className="flex-1 bg-[#F59E0B] hover:bg-[#D97706] disabled:bg-[#E5E7EB] text-white disabled:text-[#9CA3AF] py-2 rounded-lg text-xs font-medium transition-colors"
+                  >
+                    提交反馈，重新出题
+                  </button>
+                </div>
+              </div>
             )}
           </div>
         </>
@@ -428,35 +633,110 @@ export default function InterviewRoomPage() {
         <>
           {/* Chat messages */}
           <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-            {messages.map((msg, i) => (
-              <div
-                key={i}
-                className={`flex ${msg.role === "candidate" ? "justify-end" : "justify-start"}`}
-              >
-                {msg.role === "interviewer" && (
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#6366F1] to-[#8B5CF6] flex items-center justify-center text-sm mr-2 flex-shrink-0 mt-0.5">
-                    {PERSONA_EMOJIS[persona] ?? "👩‍💼"}
+            {(() => {
+              // Find index of last interviewer message for correction UI
+              let lastIvIdx = -1;
+              for (let i = messages.length - 1; i >= 0; i--) {
+                if (messages[i].role === "interviewer") { lastIvIdx = i; break; }
+              }
+              return messages.map((msg, i) => {
+                const isLastIv = msg.role === "interviewer" && i === lastIvIdx;
+                const canCorrect = isLastIv && uiState === "waiting";
+                return (
+                  <div key={i}>
+                    <div className={`flex ${msg.role === "candidate" ? "justify-end" : "justify-start"}`}>
+                      {msg.role === "interviewer" && (
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#6366F1] to-[#8B5CF6] flex items-center justify-center text-sm mr-2 flex-shrink-0 mt-0.5">
+                          {PERSONA_EMOJIS[persona] ?? "👩‍💼"}
+                        </div>
+                      )}
+                      <div className="max-w-[75%]">
+                        {msg.isProbe && (
+                          <span className="text-xs text-[#D97706] font-medium mb-1 block">🔶 追问</span>
+                        )}
+                        <div className={`relative group px-4 py-3 rounded-2xl text-sm leading-relaxed ${
+                          msg.role === "interviewer"
+                            ? "bg-white border border-[#E5E7EB] text-[#111827] rounded-tl-sm"
+                            : "bg-[#6366F1] text-white rounded-tr-sm"
+                        }`}>
+                          {msg.text}
+                          {canCorrect && (
+                            <button
+                              onClick={() => setCorrectionOpen(v => !v)}
+                              title="标记此题有问题"
+                              className="absolute -top-2 -right-2 w-6 h-6 bg-white border border-[#E5E7EB] rounded-full text-xs opacity-0 group-hover:opacity-100 transition-opacity shadow-sm hover:bg-[#FEF2F2] hover:border-[#EF4444]/40 flex items-center justify-center"
+                            >
+                              🚩
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    {/* Correction panel */}
+                    {canCorrect && correctionOpen && (
+                      <div className="ml-10 mt-2 bg-[#FFFBF5] border border-[#FDE68A] rounded-xl p-4 text-sm">
+                        <p className="text-[#92400E] font-medium mb-3">这道题有什么问题？（可多选）</p>
+                        <div className="flex flex-wrap gap-2 mb-3">
+                          {CORRECTION_TAGS.map(tag => (
+                            <button
+                              key={tag}
+                              onClick={() => toggleCorrectionTag(tag)}
+                              className={`px-3 py-1.5 rounded-full border text-xs transition-colors ${
+                                correctionTags.includes(tag)
+                                  ? "bg-[#F59E0B] border-[#F59E0B] text-white"
+                                  : "bg-white border-[#E5E7EB] text-[#374151] hover:border-[#F59E0B]"
+                              }`}
+                            >
+                              {tag}
+                            </button>
+                          ))}
+                        </div>
+                        <input
+                          type="text"
+                          placeholder="补充说明（选填）"
+                          value={correctionNote}
+                          onChange={e => setCorrectionNote(e.target.value)}
+                          className="w-full border border-[#E5E7EB] rounded-lg px-3 py-2 text-xs mb-3 focus:outline-none focus:border-[#F59E0B]"
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => { setCorrectionOpen(false); setCorrectionTags([]); setCorrectionNote(""); }}
+                            className="flex-1 border border-[#E5E7EB] text-[#6B7280] py-2 rounded-lg text-xs hover:bg-[#F9FAFB] transition-colors"
+                          >
+                            取消
+                          </button>
+                          <button
+                            onClick={handleCorrection}
+                            disabled={correctionTags.length === 0}
+                            className="flex-1 bg-[#F59E0B] hover:bg-[#D97706] disabled:bg-[#E5E7EB] text-white disabled:text-[#9CA3AF] py-2 rounded-lg text-xs font-medium transition-colors"
+                          >
+                            提交反馈，重新出题
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                )}
-                <div className={`max-w-[75%] ${msg.role === "candidate" ? "" : ""}`}>
-                  {msg.isProbe && (
-                    <span className="text-xs text-[#D97706] font-medium mb-1 block">🔶 追问</span>
-                  )}
-                  <div
-                    className={`px-4 py-3 rounded-2xl text-sm leading-relaxed ${
-                      msg.role === "interviewer"
-                        ? "bg-white border border-[#E5E7EB] text-[#111827] rounded-tl-sm"
-                        : "bg-[#6366F1] text-white rounded-tr-sm"
-                    }`}
-                  >
-                    {msg.text}
+                );
+              });
+            })()}
+
+            {/* Streaming bubble (text mode SSE) */}
+            {streamingText && (
+              <div className="flex justify-start">
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#6366F1] to-[#8B5CF6] flex items-center justify-center text-sm mr-2 flex-shrink-0 mt-0.5">
+                  {PERSONA_EMOJIS[persona] ?? "👩‍💼"}
+                </div>
+                <div className="max-w-[75%]">
+                  <div className="px-4 py-3 rounded-2xl text-sm leading-relaxed bg-white border border-[#E5E7EB] text-[#111827] rounded-tl-sm">
+                    {streamingText}
+                    <span className="inline-block w-0.5 h-3.5 bg-[#6366F1] ml-0.5 animate-pulse align-middle" />
                   </div>
                 </div>
               </div>
-            ))}
+            )}
 
             {/* Thinking indicator */}
-            {(uiState === "ai_thinking" || uiState === "transcribing") && (
+            {uiState === "ai_thinking" && !streamingText && (
               <div className="flex justify-start">
                 <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#6366F1] to-[#8B5CF6] flex items-center justify-center text-sm mr-2 flex-shrink-0">
                   {PERSONA_EMOJIS[persona] ?? "👩‍💼"}
@@ -470,6 +750,13 @@ export default function InterviewRoomPage() {
                 </div>
               </div>
             )}
+            {/* Correction status notification */}
+            {correctionStatus && (
+              <div className="flex justify-center">
+                <span className="text-xs text-[#6B7280] bg-[#F3F4F6] px-4 py-2 rounded-full">{correctionStatus}</span>
+              </div>
+            )}
+
             <div ref={chatEndRef} />
           </div>
 

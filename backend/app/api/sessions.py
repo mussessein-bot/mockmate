@@ -1,9 +1,11 @@
+import json
 from fastapi import APIRouter, HTTPException
 from app.api.schemas import CreateSessionRequest, CreateSessionResponse
 from app.core.models import InterviewSession, CandidateProfile
 from app.core.dimensions import DEFAULT_DIMENSIONS
 from app.core.memory import init_profile
 from app.storage.session_store import save_session, load_session, delete_session
+from app.storage.database import get_db
 from app.core.exceptions import SessionNotFoundError
 
 router = APIRouter()
@@ -20,6 +22,24 @@ async def create_session(body: CreateSessionRequest):
     )
     active_dims = DEFAULT_DIMENSIONS.get(body.interview_type.value, DEFAULT_DIMENSIONS["behavioral"])
 
+    # Load historical corrections for this role (cross-session RLHF)
+    historical_constraints: list[str] = []
+    async with get_db() as db:
+        cursor = await db.execute(
+            "SELECT tags, note FROM correction_log WHERE target_role = ? ORDER BY created_at DESC LIMIT 15",
+            (body.target_role,),
+        )
+        rows = await cursor.fetchall()
+    if rows:
+        tag_counts: dict[str, int] = {}
+        for row in rows:
+            for tag in json.loads(row["tags"]):
+                tag_counts[tag] = tag_counts.get(tag, 0) + 1
+        summary = "、".join(f"{tag}（{cnt}次）" for tag, cnt in tag_counts.items())
+        historical_constraints.append(
+            f"历史用户对「{body.target_role}」岗位面试的反馈：请避免出现以下类型的问题：{summary}"
+        )
+
     session = InterviewSession(
         profile=profile,
         interview_type=body.interview_type,
@@ -29,6 +49,7 @@ async def create_session(body: CreateSessionRequest):
         active_dimensions=active_dims,
         candidate_profile_json=init_profile(profile),
         max_questions=8 if body.interview_mode.value == "preset" else 12,
+        interviewer_constraints=historical_constraints,
     )
     await save_session(session)
     return CreateSessionResponse(
