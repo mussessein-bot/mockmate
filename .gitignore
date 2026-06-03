@@ -8,6 +8,18 @@ __pycache__/
 dist/
 build/
 
+# Database (runtime-generated, per-user)
+backend/mockmate.db
+
+# Generated audio files (runtime output)
+backend/audio/*.mp3
+backend/audio/*.webm
+backend/audio/*.wav
+
+# Vim swap files
+*.swp
+*.swo
+
 # Eval reports (generated output, not source)
 backend/eval/reports/*.md
 backend/eval/reports/*.json

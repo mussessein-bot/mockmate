@@ -62,11 +62,11 @@ async def _try_tavily(queries: list[str]) -> str:
     if not TAVILY_API_KEY:
         return ""
     try:
-        from tavily import TavilyClient
-        client = TavilyClient(api_key=TAVILY_API_KEY)
+        from tavily import AsyncTavilyClient
+        client = AsyncTavilyClient(api_key=TAVILY_API_KEY)
         parts = []
         for q in queries:
-            resp = client.search(q, max_results=4, search_depth="basic")
+            resp = await client.search(q, max_results=4, search_depth="basic")
             results = resp.get("results", [])
             if results:
                 parts.append(_format_tavily_results(results))
@@ -76,14 +76,19 @@ async def _try_tavily(queries: list[str]) -> str:
 
 
 async def _try_ddg(queries: list[str]) -> str:
+    import asyncio
     try:
         from duckduckgo_search import DDGS
         parts = []
-        with DDGS(timeout=10) as ddgs:
-            for q in queries:
-                results = list(ddgs.text(q, max_results=4))
-                if results:
-                    parts.append(_format_ddg_results(results))
+        def _sync_search():
+            out = []
+            with DDGS(timeout=10) as ddgs:
+                for q in queries:
+                    results = list(ddgs.text(q, max_results=4))
+                    if results:
+                        out.append(_format_ddg_results(results))
+            return out
+        parts = await asyncio.to_thread(_sync_search)
         return "\n\n---\n\n".join(parts) if parts else ""
     except Exception:
         return ""
