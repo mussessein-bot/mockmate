@@ -17,12 +17,17 @@ def build_analysis_prompt(
     job_description: str | None,
     language: str,
     extra_context: str | None = None,
+    interview_type: str | None = None,
 ) -> list[dict]:
     company_str = target_company or ("未指定导师/公司" if language == "zh" else "unspecified advisor/company")
     jd_str = f"\n职位/申请描述：\n{job_description}" if job_description else ""
     extra_str = f"\n\n补充信息：\n{extra_context}" if extra_context else ""
 
-    academic = _is_academic_context(target_role, target_company)
+    # Explicit interview_type takes priority over keyword detection
+    if interview_type is not None:
+        academic = interview_type == "graduate"
+    else:
+        academic = _is_academic_context(target_role, target_company)
 
     if language == "zh":
         if academic:

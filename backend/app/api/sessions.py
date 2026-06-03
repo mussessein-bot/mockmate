@@ -137,6 +137,7 @@ async def analyze_role(body: AnalyzeRoleRequest):
         target_company=body.target_company,
         job_description=body.job_description,
         language=body.language,
+        interview_type=body.interview_type,
     )
     raw = await chat_completion_json(messages, temperature=0.3)
     return _parse_analysis(raw)
@@ -154,6 +155,7 @@ async def refine_analysis(body: RefineAnalysisRequest):
         job_description=body.job_description,
         language=body.language,
         extra_context="\n\n".join(extra_parts),
+        interview_type=body.interview_type,
     )
     raw = await chat_completion_json(messages, temperature=0.3)
     return _parse_analysis(raw)

@@ -59,13 +59,13 @@ export const api = {
   getFeedback: (sessionId: string) =>
     apiFetch<SessionSummary>(`/api/sessions/${sessionId}/feedback`),
 
-  analyzeRole: (payload: { target_role: string; target_company?: string; job_description?: string; language?: string }) =>
+  analyzeRole: (payload: { target_role: string; target_company?: string; job_description?: string; interview_type?: string; language?: string }) =>
     apiFetch<JobAnalysisResponse>("/api/analyze-role", {
       method: "POST",
       body: JSON.stringify({ language: "zh", ...payload }),
     }),
 
-  refineAnalysis: (payload: { target_role: string; target_company?: string; job_description?: string; user_note: string; with_search?: boolean; language?: string }) =>
+  refineAnalysis: (payload: { target_role: string; target_company?: string; job_description?: string; user_note: string; with_search?: boolean; interview_type?: string; language?: string }) =>
     apiFetch<JobAnalysisResponse>("/api/refine-analysis", {
       method: "POST",
       body: JSON.stringify({ language: "zh", ...payload }),

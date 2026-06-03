@@ -10,6 +10,7 @@ class AnalyzeRoleRequest(BaseModel):
     target_role:     str
     target_company:  Optional[str] = None
     job_description: Optional[str] = None
+    interview_type:  Optional[str] = None
     language:        str = "zh"
 
 
@@ -19,6 +20,7 @@ class RefineAnalysisRequest(BaseModel):
     job_description: Optional[str] = None
     user_note:       str
     with_search:     bool = False
+    interview_type:  Optional[str] = None
     language:        str = "zh"
 
 

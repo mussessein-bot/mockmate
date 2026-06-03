@@ -165,6 +165,7 @@ export default function SetupPage() {
         target_role: effectiveRole,
         target_company: effectiveCompany || undefined,
         job_description: jobDescription || undefined,
+        interview_type: interviewType,
         language,
       });
       setAnalysisResult(result);
@@ -209,6 +210,7 @@ export default function SetupPage() {
         target_company: effectiveCompany || undefined,
         job_description: jobDescription || undefined,
         user_note: refineNote,
+        interview_type: interviewType,
         language,
       });
       setAnalysisResult(result);
