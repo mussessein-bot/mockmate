@@ -152,6 +152,9 @@ _QTYPE_HINT_ZH = {
     "situational": "用情景假设格式（'如果……你会怎么做？'）",
     "quantitative_probe": "追问量化细节（数字来源、具体规模、衡量方式）",
     "role_challenge": "挑战候选人的立场或假设（'你真的认为……吗？为什么？'）",
+    "technical_concept": "考察技术原理（提问底层机制、实现原理，如'解释一下……的工作方式'）",
+    "algorithm": "出一道算法题（先完整描述题目和约束，让候选人分析思路，不要给答案）",
+    "system_design": "出一道系统设计题（先引导候选人澄清需求规模，再讨论架构设计）",
 }
 
 _QTYPE_HINT_EN = {
@@ -159,6 +162,9 @@ _QTYPE_HINT_EN = {
     "situational": "Use situational/hypothetical format ('If X happened, what would you do?')",
     "quantitative_probe": "Probe for quantitative details (data source, scale, measurement method)",
     "role_challenge": "Challenge the candidate's position or assumption ('Do you really believe...? Why?')",
+    "technical_concept": "Probe technical principles (ask about underlying mechanisms, e.g. 'Explain how X works under the hood')",
+    "algorithm": "Present an algorithm problem (fully describe the problem and constraints; ask for approach — do NOT give the answer)",
+    "system_design": "Present a system design question (guide the candidate to clarify scale/requirements first, then discuss architecture)",
 }
 
 
@@ -184,6 +190,34 @@ def build_interviewer_prompt(
 ) -> list[dict]:
     system_map = PERSONA_SYSTEM_ZH if language == "zh" else PERSONA_SYSTEM_EN
     system = system_map[persona]
+
+    if interview_type == "technical":
+        if language == "zh":
+            system += """
+【技术面试流程指引】
+这是一场技术专项面试，请严格遵循以下节奏，不要偏离：
+1. 技术背景了解：引导候选人介绍核心项目经历和技术栈
+2. 技术基础考察（2-3题）：语言特性、框架原理、计算机基础，先听思路再追问细节
+3. 核心技术深挖（1-2题）：算法题或系统设计题
+   - 算法题规则：先完整描述题目和约束 → 让候选人说思路（不要急着给答案）→ 追问时间/空间复杂度
+   - 系统设计规则：先引导澄清需求规模 → 高层架构 → 追问关键技术选型的权衡
+4. 项目经历深挖（1-2题）：结合简历追问技术决策和踩坑
+5. 反问环节：最后邀请候选人提问
+
+重要约束：绝不直接给出答案，先让候选人表达思路；算法题优先追问复杂度而非代码细节。"""
+        else:
+            system += """
+[Technical Interview Flow]
+This is a technical interview. Follow this structure strictly:
+1. Technical Background: Ask about core projects and tech stack
+2. Technical Fundamentals (2-3 Qs): Language features, framework internals, CS basics — hear their approach first, then probe
+3. Core Technical Deep-Dive (1-2 Qs): Algorithm or system design
+   - Algorithm: Fully describe the problem → ask for approach (don't give answers) → probe time/space complexity
+   - System Design: Clarify scale/requirements → high-level architecture → probe key trade-offs
+4. Project Deep-Dive (1-2 Qs): Dig into technical decisions and lessons learned from resume
+5. Candidate Questions: Close by inviting the candidate to ask questions
+
+Critical constraint: Never give answers directly — always ask for the candidate's thinking first."""
 
     messages: list[dict] = [{"role": "system", "content": system}]
 

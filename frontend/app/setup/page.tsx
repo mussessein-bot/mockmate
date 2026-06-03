@@ -4,9 +4,20 @@ import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { api, audioUrl } from "@/lib/api";
 import type {
-  Language, InterviewType, InterviewMode, InterviewInterface,
+  Language, InterviewType, InterviewInterface,
   PersonaType, JobAnalysisResponse, ExtractedQuestion,
 } from "@/lib/types";
+
+const TECH_ROLE_PRESETS = [
+  { zh: "前端工程师", en: "Frontend Engineer" },
+  { zh: "后端工程师", en: "Backend Engineer" },
+  { zh: "算法工程师", en: "Algorithm Engineer" },
+  { zh: "数据工程师", en: "Data Engineer" },
+  { zh: "机器学习工程师", en: "ML Engineer" },
+  { zh: "移动端工程师", en: "Mobile Engineer" },
+  { zh: "全栈工程师", en: "Full Stack Engineer" },
+  { zh: "DevOps 工程师", en: "DevOps Engineer" },
+];
 
 const PERSONAS = [
   {
@@ -107,7 +118,6 @@ export default function SetupPage() {
   const [refineLoading, setRefineLoading] = useState(false);
 
   // Step 4: Settings
-  const [interviewMode, setInterviewMode] = useState<InterviewMode>("preset");
   const [interviewInterface, setInterviewInterface] = useState<InterviewInterface>("voice");
 
   // Step 5: Persona
@@ -155,6 +165,11 @@ export default function SetupPage() {
     }
   }
 
+  const effectiveJobDesc = (() => {
+    const parts = [jobDescription, interviewType === "technical" && techStack ? `技术栈：${techStack}` : ""].filter(Boolean);
+    return parts.length > 0 ? parts.join("\n\n") : undefined;
+  })();
+
   async function handleProfileNext() {
     setStep(3);
     setAnalysisLoading(true);
@@ -164,7 +179,7 @@ export default function SetupPage() {
       const result = await api.analyzeRole({
         target_role: effectiveRole,
         target_company: effectiveCompany || undefined,
-        job_description: jobDescription || undefined,
+        job_description: effectiveJobDesc,
         interview_type: interviewType,
         language,
       });
@@ -183,7 +198,7 @@ export default function SetupPage() {
         interview_type: interviewType,
         target_role: effectiveRole,
         target_company: effectiveCompany || undefined,
-        job_description: jobDescription || undefined,
+        job_description: effectiveJobDesc,
         target_school: targetSchool || undefined,
         target_department: targetDepartment || undefined,
         target_advisor: targetAdvisor || undefined,
@@ -208,7 +223,7 @@ export default function SetupPage() {
       const result = await api.refineAnalysis({
         target_role: effectiveRole,
         target_company: effectiveCompany || undefined,
-        job_description: jobDescription || undefined,
+        job_description: effectiveJobDesc,
         user_note: refineNote,
         interview_type: interviewType,
         language,
@@ -244,12 +259,12 @@ export default function SetupPage() {
         name,
         target_role: effectiveRole,
         target_company: effectiveCompany || undefined,
-        job_description: jobDescription || undefined,
+        job_description: effectiveJobDesc,
         job_analysis: analysisResult ?? undefined,
         resume_text: resumeText || undefined,
         language,
         interview_type: interviewType,
-        interview_mode: interviewMode,
+        interview_mode: "dynamic",
         interview_interface: interviewInterface,
         persona,
       });
@@ -373,6 +388,28 @@ export default function SetupPage() {
               {/* Behavioral / Technical fields */}
               {(interviewType === "behavioral" || interviewType === "technical") && (
                 <>
+                  {interviewType === "technical" && (
+                    <div>
+                      <p className="text-sm font-medium text-[#374151] mb-2">
+                        {zh ? "快速选择技术岗位" : "Quick Select"}
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {TECH_ROLE_PRESETS.map((r) => (
+                          <button
+                            key={r.zh}
+                            onClick={() => setTargetRole(zh ? r.zh : r.en)}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+                              targetRole === (zh ? r.zh : r.en)
+                                ? "border-[#6366F1] bg-[#EEF2FF] text-[#6366F1]"
+                                : "border-[#E5E7EB] bg-white text-[#374151] hover:border-[#6366F1]/50"
+                            }`}
+                          >
+                            {zh ? r.zh : r.en}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   <div>
                     <label className="text-sm font-medium text-[#374151] block mb-1">
                       {zh ? "目标职位" : "Target Role"} *
@@ -570,9 +607,9 @@ export default function SetupPage() {
                           <p className="text-xs text-[#6B7280] mt-0.5">
                             {zh
                               ? interviewType === "graduate"
-                                ? "搜索该校该导师的真实研究生面试题"
-                                : "搜索该公司岗位的真实面经题目"
-                              : "Find real interview questions from the web"}
+                                ? "搜索真实面经，优化岗位分析并展示参考题目"
+                                : "搜索真实面经，优化岗位分析并展示参考题目"
+                              : "Search real interview experiences to refine analysis and show reference questions"}
                           </p>
                         </div>
                         <button
@@ -595,8 +632,8 @@ export default function SetupPage() {
                           <div>
                             <p className="text-xs font-medium text-[#374151] mb-2">
                               {zh
-                                ? `从网络搜索中发现 ${extractedQuestions.length} 道真实面试题`
-                                : `Found ${extractedQuestions.length} real interview questions`}
+                                ? `搜索完成，岗位分析已优化 · 发现 ${extractedQuestions.length} 道参考真题`
+                                : `Analysis refined · Found ${extractedQuestions.length} reference questions`}
                             </p>
                             <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
                               {extractedQuestions.map((q, i) => (
@@ -611,7 +648,7 @@ export default function SetupPage() {
                           </div>
                         ) : (
                           <p className="text-xs text-[#6B7280]">
-                            {zh ? "未找到结构化题目，已用搜索信息辅助分析" : "No structured questions found; search context used for analysis"}
+                            {zh ? "搜索完成，岗位分析已优化（未提取到结构化题目）" : "Analysis refined with search results (no structured questions extracted)"}
                           </p>
                         )}
                       </div>
@@ -664,40 +701,10 @@ export default function SetupPage() {
           </StepCard>
         )}
 
-        {/* Step 4: Mode + Interface */}
+        {/* Step 4: Interface */}
         {stepUnlocked[4] && (
           <StepCard title={zh ? "面试设置" : "Interview Settings"} active={step === 4}>
             <div className="space-y-6">
-              <div>
-                <p className="text-sm font-medium text-[#374151] mb-3">
-                  {zh ? "面试模式" : "Interview Mode"}
-                </p>
-                <div className="grid grid-cols-2 gap-3">
-                  {(["preset", "dynamic"] as InterviewMode[]).map((m) => (
-                    <button
-                      key={m}
-                      onClick={() => setInterviewMode(m)}
-                      className={`p-4 rounded-xl border-2 text-left transition-all ${
-                        interviewMode === m
-                          ? "border-[#6366F1] bg-[#EEF2FF]"
-                          : "border-[#E5E7EB] bg-white hover:border-[#6366F1]/50"
-                      }`}
-                    >
-                      <div className="font-semibold text-sm text-[#111827]">
-                        {m === "preset"
-                          ? zh ? "结构化练习" : "Structured"
-                          : zh ? "真实模拟" : "Dynamic"}
-                      </div>
-                      <div className="text-xs text-[#6B7280] mt-1">
-                        {m === "preset"
-                          ? zh ? "固定8题，可重现" : "8 fixed questions"
-                          : zh ? "AI自主调整，每场不同" : "AI adapts in real time"}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
               <div>
                 <p className="text-sm font-medium text-[#374151] mb-3">
                   {zh ? "回答方式" : "Answer Mode"}
