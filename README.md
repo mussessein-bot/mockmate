@@ -39,8 +39,29 @@ brew install cloudflared
 
 ### 1. 克隆仓库
 
+**方式一：HTTPS（推荐新手，无需额外配置）**
 ```bash
-git clone https://github.com/你的账号/mockmate.git
+git clone https://github.com/mussessein-bot/mockmate.git
+cd mockmate
+```
+> 推送代码时会要求输入 GitHub 用户名和 Personal Access Token（不是密码）。Token 申请地址：https://github.com/settings/tokens → Generate new token (classic)，勾选 `repo` 权限即可。
+
+**方式二：SSH（配置一次，之后免密）**
+
+先检查本机是否已有 SSH key：
+```bash
+ls ~/.ssh/id_*.pub
+```
+- 有输出 → 已有 key，跳过生成步骤
+- 报错 → 需要生成：
+
+```bash
+ssh-keygen -t ed25519 -C "你的GitHub邮箱" -f ~/.ssh/id_ed25519 -N ""
+cat ~/.ssh/id_ed25519.pub   # 复制输出内容
+```
+将复制的内容粘贴到 https://github.com/settings/ssh/new 添加，然后克隆：
+```bash
+git clone git@github.com:mussessein-bot/mockmate.git
 cd mockmate
 ```
 
