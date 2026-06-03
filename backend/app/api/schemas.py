@@ -18,6 +18,7 @@ class RefineAnalysisRequest(BaseModel):
     target_company:  Optional[str] = None
     job_description: Optional[str] = None
     user_note:       str
+    with_search:     bool = False
     language:        str = "zh"
 
 

@@ -143,12 +143,16 @@ async def analyze_role(body: AnalyzeRoleRequest):
 
 @router.post("/refine-analysis", response_model=JobAnalysisResponse)
 async def refine_analysis(body: RefineAnalysisRequest):
+    extra_parts = [f"用户补充说明：{body.user_note}"]
+    if body.with_search:
+        search_text = await search_job_info(body.target_role, body.target_company)
+        extra_parts.append(f"以下是互联网上搜索到的相关信息，供参考：\n{search_text}")
     messages = build_analysis_prompt(
         target_role=body.target_role,
         target_company=body.target_company,
         job_description=body.job_description,
         language=body.language,
-        extra_context=f"用户补充说明：{body.user_note}",
+        extra_context="\n\n".join(extra_parts),
     )
     raw = await chat_completion_json(messages, temperature=0.3)
     return _parse_analysis(raw)

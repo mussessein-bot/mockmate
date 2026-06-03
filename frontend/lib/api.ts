@@ -64,7 +64,7 @@ export const api = {
       body: JSON.stringify({ language: "zh", ...payload }),
     }),
 
-  refineAnalysis: (payload: { target_role: string; target_company?: string; job_description?: string; user_note: string; language?: string }) =>
+  refineAnalysis: (payload: { target_role: string; target_company?: string; job_description?: string; user_note: string; with_search?: boolean; language?: string }) =>
     apiFetch<JobAnalysisResponse>("/api/refine-analysis", {
       method: "POST",
       body: JSON.stringify({ language: "zh", ...payload }),

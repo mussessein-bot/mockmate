@@ -74,7 +74,7 @@ export default function SetupPage() {
   const [analysisResult, setAnalysisResult] = useState<JobAnalysisResponse | null>(null);
   const [refineNote, setRefineNote] = useState("");
   const [refineLoading, setRefineLoading] = useState(false);
-  const [searchLoading, setSearchLoading] = useState(false);
+  const [refineWithSearch, setRefineWithSearch] = useState(false);
   const [resumeText, setResumeText] = useState("");
   const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfError, setPdfError] = useState("");
@@ -147,6 +147,7 @@ export default function SetupPage() {
         target_company: targetCompany || undefined,
         job_description: jobDescription || undefined,
         user_note: refineNote,
+        with_search: refineWithSearch,
         language,
       });
       setAnalysisResult(result);
@@ -155,23 +156,6 @@ export default function SetupPage() {
       console.error(e);
     } finally {
       setRefineLoading(false);
-    }
-  }
-
-  async function handleWebSearch() {
-    setSearchLoading(true);
-    try {
-      const result = await api.webSearchAnalyze({
-        target_role: targetRole,
-        target_company: targetCompany || undefined,
-        job_description: jobDescription || undefined,
-        language,
-      });
-      setAnalysisResult(result);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSearchLoading(false);
     }
   }
 
@@ -399,7 +383,7 @@ export default function SetupPage() {
                 {/* Refine */}
                 <div className="border-t border-[#E5E7EB] pt-4">
                   <p className="text-xs font-medium text-[#374151] mb-2">{zh ? "有不准确的地方？告诉我" : "Something off? Tell me"}</p>
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 mb-2">
                     <input
                       value={refineNote}
                       onChange={e => setRefineNote(e.target.value)}
@@ -411,19 +395,21 @@ export default function SetupPage() {
                       disabled={!refineNote.trim() || refineLoading}
                       className="px-4 py-2 bg-[#6366F1] hover:bg-[#4F46E5] disabled:bg-[#E5E7EB] disabled:text-[#9CA3AF] text-white text-xs rounded-xl transition-colors flex-shrink-0"
                     >
-                      {refineLoading ? "..." : zh ? "重新分析" : "Re-analyze"}
+                      {refineLoading ? (zh ? "分析中..." : "Analyzing...") : zh ? "重新分析" : "Re-analyze"}
                     </button>
                   </div>
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={refineWithSearch}
+                      onChange={e => setRefineWithSearch(e.target.checked)}
+                      className="w-3.5 h-3.5 accent-[#6366F1]"
+                    />
+                    <span className="text-xs text-[#6B7280]">
+                      {zh ? "🔍 同时搜索最新网络信息辅助分析" : "🔍 Also search the web for latest info"}
+                    </span>
+                  </label>
                 </div>
-
-                {/* Web Search */}
-                <button
-                  onClick={handleWebSearch}
-                  disabled={searchLoading}
-                  className="w-full border border-[#E5E7EB] hover:border-[#6366F1] text-[#6B7280] hover:text-[#6366F1] text-xs py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2"
-                >
-                  {searchLoading ? (zh ? "搜索中..." : "Searching...") : (zh ? "🔍 搜索最新招聘信息" : "🔍 Search latest job listings")}
-                </button>
 
                 <button
                   onClick={() => setStep(3)}
