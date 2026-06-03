@@ -72,18 +72,26 @@ class DimensionScore(BaseModel):
     feedback:  str
 
 
+class SentenceAnnotation(BaseModel):
+    text:    str
+    label:   str   # good | vague | weak | ok
+    comment: str
+
+
 class EvaluationResult(BaseModel):
     model_config = {"protected_namespaces": ()}
 
-    question_index:     int
-    question_text:      str
-    answer_transcript:  str
-    dimension_scores:   list[DimensionScore]
-    overall_score:      float
-    is_probe:           bool = False        # True if this question was a probe
-    is_probe_triggered: bool = False        # True if this answer triggers a probe
-    probe_reason:       Optional[str] = None
-    model_answer:       Optional[str] = None
+    question_index:       int
+    question_text:        str
+    answer_transcript:    str
+    dimension_scores:     list[DimensionScore]
+    overall_score:        float
+    is_probe:             bool = False
+    is_probe_triggered:   bool = False
+    probe_reason:         Optional[str] = None
+    model_answer:         Optional[str] = None
+    sentence_annotations: Optional[list[SentenceAnnotation]] = None
+    answer_critique:      Optional[dict] = None  # {"highlights": [...], "improvements": [...]}
 
 
 class SessionSummary(BaseModel):

@@ -40,3 +40,25 @@
     text-wrap: balance;
   }
 }
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  .print-break-avoid {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  body {
+    background: white !important;
+  }
+  @page {
+    margin: 15mm;
+  }
+}
+
+@media screen {
+  .print-only {
+    display: none !important;
+  }
+}
