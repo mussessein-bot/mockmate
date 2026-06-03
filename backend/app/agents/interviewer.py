@@ -49,6 +49,7 @@ class InterviewerAgent(BaseAgent):
         is_probe: bool,
         probe_reason: str | None,
         question_type: str = "behavioral",
+        dimension_focus: list[str] | None = None,
     ) -> str:
         messages = build_interviewer_prompt(
             persona=self.session.persona.value,
@@ -66,6 +67,7 @@ class InterviewerAgent(BaseAgent):
             job_analysis=self._job_analysis(),
             resume_parsed=self._resume_parsed(),
             candidate_profile=self._candidate_profile(),
+            dimension_focus=dimension_focus,
         )
         return await chat_completion(messages, temperature=0.75)
 
@@ -76,6 +78,7 @@ class InterviewerAgent(BaseAgent):
         is_probe: bool,
         probe_reason: str | None,
         question_type: str = "behavioral",
+        dimension_focus: list[str] | None = None,
     ) -> AsyncGenerator[str, None]:
         messages = build_interviewer_prompt(
             persona=self.session.persona.value,
@@ -93,6 +96,7 @@ class InterviewerAgent(BaseAgent):
             job_analysis=self._job_analysis(),
             resume_parsed=self._resume_parsed(),
             candidate_profile=self._candidate_profile(),
+            dimension_focus=dimension_focus,
         )
         async for chunk in chat_completion_stream(messages, temperature=0.75):
             yield chunk

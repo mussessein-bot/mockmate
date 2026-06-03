@@ -180,6 +180,7 @@ def build_interviewer_prompt(
     job_analysis: dict | None = None,
     resume_parsed: dict | None = None,
     candidate_profile: dict | None = None,
+    dimension_focus: list[str] | None = None,
 ) -> list[dict]:
     system_map = PERSONA_SYSTEM_ZH if language == "zh" else PERSONA_SYSTEM_EN
     system = system_map[persona]
@@ -206,18 +207,37 @@ def build_interviewer_prompt(
         return messages
 
     # Normal turn
+    ja = job_analysis or {}
+    ja_dims = ja.get("core_dimensions", [])
+
+    # Build dimension_focus annotation for instruction
+    focus_annotation = ""
+    if dimension_focus and ja_dims:
+        dim_map = {d["name"]: d for d in ja_dims}
+        # Also try matching by checking if focus key appears in dim name (fallback)
+        matched = [d for d in ja_dims if any(f.lower() in d["name"].lower() for f in dimension_focus)]
+        if matched:
+            if language == "zh":
+                focus_annotation = "（本题重点考察岗位能力：" + "、".join(
+                    f"{d['name']}——{d.get('description', '')}" for d in matched
+                ) + "）"
+            else:
+                focus_annotation = " (This question targets job-specific competency: " + "; ".join(
+                    f"{d['name']} — {d.get('description', '')}" for d in matched
+                ) + ")"
+
     if language == "zh":
         if is_probe:
             instruction = f"候选人的回答需要追问。追问原因：{probe_reason or '回答不够具体'}。话题聚焦：{topic}。请用你的风格提一个追问，开头加上简短回应。"
         else:
             qtype_hint = _QTYPE_HINT_ZH.get(question_type, _QTYPE_HINT_ZH["behavioral"])
-            instruction = f"请问下一道面试题，话题：{topic}，问题类型：{qtype_hint}，候选人目标职位：{target_role}。先简短回应上一个回答（1句话），再按要求的问题类型提问。"
+            instruction = f"请问下一道面试题，话题：{topic}{focus_annotation}，问题类型：{qtype_hint}，候选人目标职位：{target_role}。先简短回应上一个回答（1句话），再按要求的问题类型提问，问题内容要紧扣上述话题和考察方向。"
     else:
         if is_probe:
             instruction = f"The candidate's answer needs a follow-up. Probe reason: {probe_reason or 'answer lacked specifics'}. Focus: {topic}. Ask your follow-up in your style, with a brief acknowledgment first."
         else:
             qtype_hint = _QTYPE_HINT_EN.get(question_type, _QTYPE_HINT_EN["behavioral"])
-            instruction = f"Ask the next interview question. Topic: {topic}. Question type: {qtype_hint}. Target role: {target_role}. Briefly acknowledge the previous answer (1 sentence), then ask the question in the specified format."
+            instruction = f"Ask the next interview question. Topic: {topic}{focus_annotation}. Question type: {qtype_hint}. Target role: {target_role}. Briefly acknowledge the previous answer (1 sentence), then ask a question that specifically addresses the topic and competency above."
 
     context_parts: list[str] = []
 
@@ -226,13 +246,19 @@ def build_interviewer_prompt(
         prefix += "\n".join(f"- {c}" for c in constraints)
         context_parts.append(prefix)
 
-    ja = job_analysis or {}
-    ja_dims = ja.get("core_dimensions", [])
     if ja_dims:
         if language == "zh":
-            context_parts.append("岗位核心考察方向（问题请围绕这些方向）：" + "、".join(d["name"] for d in ja_dims))
+            lines = ["岗位核心考察方向（问题请紧密围绕以下方向展开）："]
+            for d in ja_dims:
+                weight_label = f"权重：{d.get('weight', '中')}"
+                lines.append(f"- {d['name']}（{weight_label}）：{d.get('description', '')}")
+            context_parts.append("\n".join(lines))
         else:
-            context_parts.append("Job focus areas (align questions to these): " + ", ".join(d["name"] for d in ja_dims))
+            lines = ["Job focus areas (questions must directly address these):"]
+            for d in ja_dims:
+                weight_label = f"weight: {d.get('weight', 'medium')}"
+                lines.append(f"- {d['name']} ({weight_label}): {d.get('description', '')}")
+            context_parts.append("\n".join(lines))
 
     if resume_parsed and any(resume_parsed.values()):
         rp_lines: list[str] = []

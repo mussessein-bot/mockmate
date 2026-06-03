@@ -425,20 +425,12 @@ export default function SetupPage() {
                   {searchLoading ? (zh ? "搜索中..." : "Searching...") : (zh ? "🔍 搜索最新招聘信息" : "🔍 Search latest job listings")}
                 </button>
 
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => setStep(3)}
-                    className="flex-1 border border-[#E5E7EB] text-[#6B7280] py-3 rounded-xl text-sm hover:bg-[#F9FAFB] transition-colors"
-                  >
-                    {zh ? "跳过" : "Skip"}
-                  </button>
-                  <button
-                    onClick={() => setStep(3)}
-                    className="flex-1 bg-[#6366F1] hover:bg-[#4F46E5] text-white font-semibold py-3 rounded-xl text-sm transition-colors"
-                  >
-                    {zh ? "确认，继续 →" : "Confirm →"}
-                  </button>
-                </div>
+                <button
+                  onClick={() => setStep(3)}
+                  className="w-full bg-[#6366F1] hover:bg-[#4F46E5] text-white font-semibold py-3 rounded-xl text-sm transition-colors"
+                >
+                  {zh ? "下一步" : "Next"}
+                </button>
               </div>
             ) : (
               /* Analysis failed or not triggered — show skip option */

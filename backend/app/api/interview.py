@@ -173,6 +173,7 @@ async def respond(session_id: str, body: RespondRequest):
             is_probe=is_probe,
             probe_reason=eval_result.probe_reason,
             question_type=decision.get("question_type", "behavioral"),
+            dimension_focus=decision.get("dimension_focus"),
         )
 
         # Advance question count for the new (upcoming) question
@@ -209,6 +210,7 @@ async def respond(session_id: str, body: RespondRequest):
         "next_action": next_action,
         "topic": topic,
         "question_type": decision.get("question_type", "behavioral"),
+        "dimension_focus": decision.get("dimension_focus", []),
         "is_probe": next_action == "probe",
         "probe_reason": eval_result.probe_reason,
     }
@@ -328,6 +330,7 @@ async def respond_stream(session_id: str, body: RespondRequest):
                 is_probe=is_probe,
                 probe_reason=eval_result.probe_reason,
                 question_type=decision.get("question_type", "behavioral"),
+                dimension_focus=decision.get("dimension_focus"),
             ):
                 full_text += chunk
                 yield f"data: {json.dumps({'type': 'chunk', 'text': chunk}, ensure_ascii=False)}\n\n"
@@ -456,6 +459,7 @@ async def correct_question(session_id: str, body: CorrectionRequest):
     question_type = sd.get("question_type", "behavioral")
     is_probe = sd.get("is_probe", False)
     probe_reason = sd.get("probe_reason")
+    dimension_focus = sd.get("dimension_focus")
 
     # Don't re-apply probe/question count — this is a replacement, not a new step
     interviewer = InterviewerAgent(session)
@@ -465,6 +469,7 @@ async def correct_question(session_id: str, body: CorrectionRequest):
         is_probe=is_probe,
         probe_reason=probe_reason,
         question_type=question_type,
+        dimension_focus=dimension_focus,
     )
 
     # Append new question to history
