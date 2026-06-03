@@ -5,7 +5,7 @@ import { useRouter, useParams } from "next/navigation";
 import { api, audioUrl } from "@/lib/api";
 import type { InterviewInterface, InterviewState, RespondResponse } from "@/lib/types";
 
-type UIState = "loading" | "ai_speaking" | "ai_thinking" | "waiting" | "recording" | "transcribing" | "paused";
+type UIState = "loading" | "ai_speaking" | "ai_thinking" | "waiting" | "recording" | "transcribing" | "paused" | "review";
 
 interface ChatMessage {
   role: "interviewer" | "candidate";
@@ -60,8 +60,12 @@ export default function InterviewRoomPage() {
   const [correctionTags, setCorrectionTags] = useState<string[]>([]);
   const [correctionNote, setCorrectionNote] = useState("");
   const [correctionStatus, setCorrectionStatus] = useState<string | null>(null);
+  const [audioPlayFailed, setAudioPlayFailed] = useState(false);
+  const [emptyTranscriptAlert, setEmptyTranscriptAlert] = useState(false);
+  const [reviewTranscript, setReviewTranscript] = useState("");
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const reviewBlobUrlRef = useRef<string | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const startTimeRef = useRef<number>(Date.now());
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -100,12 +104,20 @@ export default function InterviewRoomPage() {
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.onended = null;
+      audioRef.current.onerror = null;
     }
-    audioRef.current = new Audio(audioUrl(url));
-    audioRef.current.onended = onEnd ?? null;
-    audioRef.current.play().catch((err) => {
+    setAudioPlayFailed(false);
+    const audio = new Audio(audioUrl(url));
+    audioRef.current = audio;
+    const handleFailure = () => {
+      setAudioPlayFailed(true);
+      onEnd?.();
+    };
+    audio.onended = onEnd ?? null;
+    audio.onerror = handleFailure;
+    audio.play().catch((err) => {
       console.error("Audio play failed:", err);
-      onEnd?.(); // advance state even if audio is blocked or fails
+      handleFailure();
     });
   }
 
@@ -301,10 +313,16 @@ export default function InterviewRoomPage() {
               setTextInput(prev => prev.trim() ? prev.trim() + " " + transcript : transcript);
               setUiState("waiting");
             } else {
-              await handleRespond(transcript);
+              // Voice mode: 先进 review 状态让用户确认
+              if (reviewBlobUrlRef.current) URL.revokeObjectURL(reviewBlobUrlRef.current);
+              reviewBlobUrlRef.current = URL.createObjectURL(blob);
+              setReviewTranscript(transcript);
+              setUiState("review");
             }
           } else {
+            setEmptyTranscriptAlert(true);
             setUiState("waiting");
+            setTimeout(() => setEmptyTranscriptAlert(false), 4000);
           }
         } catch (err) {
           console.error("Transcribe error:", err);
@@ -329,6 +347,33 @@ export default function InterviewRoomPage() {
   function toggleMic() {
     if (uiState === "waiting") startRecording();
     else if (uiState === "recording") stopRecording();
+  }
+
+  // ── Review controls ───────────────────────────────────────────────────────
+
+  function playReviewAudio() {
+    if (reviewBlobUrlRef.current) {
+      new Audio(reviewBlobUrlRef.current).play().catch(err => console.error("Review play failed:", err));
+    }
+  }
+
+  function reRecord() {
+    if (reviewBlobUrlRef.current) {
+      URL.revokeObjectURL(reviewBlobUrlRef.current);
+      reviewBlobUrlRef.current = null;
+    }
+    setReviewTranscript("");
+    setUiState("waiting");
+  }
+
+  async function confirmReview() {
+    const text = reviewTranscript;
+    if (reviewBlobUrlRef.current) {
+      URL.revokeObjectURL(reviewBlobUrlRef.current);
+      reviewBlobUrlRef.current = null;
+    }
+    setReviewTranscript("");
+    await handleRespond(text);
   }
 
   // ── Text input send ───────────────────────────────────────────────────────
@@ -508,7 +553,12 @@ export default function InterviewRoomPage() {
             )}
 
             <div className="w-full max-w-lg min-h-[80px] flex items-center justify-center mt-6">
-              {uiState === "ai_thinking" ? (
+              {uiState === "review" ? (
+                <div className="text-center px-2">
+                  <p className="text-xs text-[#6B7280] mb-2">🎤 识别结果</p>
+                  <p className="text-[#111827] text-base leading-relaxed">{reviewTranscript}</p>
+                </div>
+              ) : uiState === "ai_thinking" ? (
                 <div className="flex items-center gap-2 text-[#6B7280]">
                   <div className="flex gap-1">
                     <span className="w-2 h-2 bg-[#6366F1] rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
@@ -535,53 +585,91 @@ export default function InterviewRoomPage() {
           </div>
 
           <div className="bg-white border-t border-[#E5E7EB] px-6 py-4 flex-shrink-0">
-            <div className="flex items-center justify-center gap-8">
-              <button
-                onClick={replayAudio}
-                disabled={!canInteract}
-                className="flex flex-col items-center gap-1 text-[#6B7280] hover:text-[#6366F1] disabled:text-[#D1D5DB] transition-colors"
-              >
-                <div className="w-10 h-10 rounded-full border border-current flex items-center justify-center text-lg">↺</div>
-                <span className="text-xs">重播</span>
-              </button>
-
-              {/* Voice mode correction trigger */}
-              <button
-                onClick={() => setCorrectionOpen(v => !v)}
-                disabled={!canInteract || questionCount === 0}
-                className="flex flex-col items-center gap-1 text-[#6B7280] hover:text-[#F59E0B] disabled:text-[#D1D5DB] transition-colors"
-              >
-                <div className="w-10 h-10 rounded-full border border-current flex items-center justify-center text-base">🚩</div>
-                <span className="text-xs">标记此题</span>
-              </button>
-
-              <button
-                onClick={toggleMic}
-                disabled={!canInteract}
-                className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl transition-all shadow-md ${
-                  uiState === "recording"
-                    ? "bg-[#EF4444] text-white animate-pulse"
-                    : canInteract
-                    ? "bg-[#6366F1] text-white hover:bg-[#4F46E5]"
-                    : "bg-[#E5E7EB] text-[#9CA3AF] cursor-not-allowed"
-                }`}
-              >
-                {uiState === "recording" ? "⏹" : "🎙️"}
-              </button>
-
-              <button
-                onClick={togglePause}
-                className="flex flex-col items-center gap-1 text-[#6B7280] hover:text-[#6366F1] transition-colors"
-              >
-                <div className="w-10 h-10 rounded-full border border-current flex items-center justify-center text-lg">
-                  {isPaused ? "▶" : "⏸"}
+            {uiState === "review" ? (
+              /* ── Review panel ── */
+              <div className="flex flex-col items-center gap-3">
+                <div className="flex items-center gap-4">
+                  <button
+                    onClick={playReviewAudio}
+                    className="flex flex-col items-center gap-1 text-[#6B7280] hover:text-[#6366F1] transition-colors"
+                  >
+                    <div className="w-10 h-10 rounded-full border border-current flex items-center justify-center text-lg">▶</div>
+                    <span className="text-xs">播放录音</span>
+                  </button>
+                  <button
+                    onClick={reRecord}
+                    className="flex flex-col items-center gap-1 text-[#6B7280] hover:text-[#EF4444] transition-colors"
+                  >
+                    <div className="w-10 h-10 rounded-full border border-current flex items-center justify-center text-base">🔄</div>
+                    <span className="text-xs">重新说</span>
+                  </button>
+                  <button
+                    onClick={confirmReview}
+                    className="w-16 h-16 rounded-full bg-[#10B981] hover:bg-[#059669] text-white flex items-center justify-center text-2xl shadow-md transition-colors"
+                  >
+                    ✓
+                  </button>
                 </div>
-                <span className="text-xs">{isPaused ? "继续" : "暂停"}</span>
-              </button>
-            </div>
+                <p className="text-xs text-[#9CA3AF]">听一下录音确认无误，或重新录制，点 ✓ 发送</p>
+              </div>
+            ) : (
+              /* ── Normal controls ── */
+              <>
+                <div className="flex items-center justify-center gap-8">
+                  <button
+                    onClick={replayAudio}
+                    disabled={!canInteract}
+                    className="flex flex-col items-center gap-1 text-[#6B7280] hover:text-[#6366F1] disabled:text-[#D1D5DB] transition-colors"
+                  >
+                    <div className="w-10 h-10 rounded-full border border-current flex items-center justify-center text-lg">↺</div>
+                    <span className="text-xs">重播</span>
+                  </button>
 
-            {uiState === "waiting" && !correctionOpen && (
-              <p className="text-center text-xs text-[#9CA3AF] mt-3">点击麦克风开始录音，再次点击停止并发送</p>
+                  {/* Voice mode correction trigger */}
+                  <button
+                    onClick={() => setCorrectionOpen(v => !v)}
+                    disabled={!canInteract || questionCount === 0}
+                    className="flex flex-col items-center gap-1 text-[#6B7280] hover:text-[#F59E0B] disabled:text-[#D1D5DB] transition-colors"
+                  >
+                    <div className="w-10 h-10 rounded-full border border-current flex items-center justify-center text-base">🚩</div>
+                    <span className="text-xs">标记此题</span>
+                  </button>
+
+                  <button
+                    onClick={toggleMic}
+                    disabled={!canInteract}
+                    className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl transition-all shadow-md ${
+                      uiState === "recording"
+                        ? "bg-[#EF4444] text-white animate-pulse"
+                        : canInteract
+                        ? "bg-[#6366F1] text-white hover:bg-[#4F46E5]"
+                        : "bg-[#E5E7EB] text-[#9CA3AF] cursor-not-allowed"
+                    }`}
+                  >
+                    {uiState === "recording" ? "⏹" : "🎙️"}
+                  </button>
+
+                  <button
+                    onClick={togglePause}
+                    className="flex flex-col items-center gap-1 text-[#6B7280] hover:text-[#6366F1] transition-colors"
+                  >
+                    <div className="w-10 h-10 rounded-full border border-current flex items-center justify-center text-lg">
+                      {isPaused ? "▶" : "⏸"}
+                    </div>
+                    <span className="text-xs">{isPaused ? "继续" : "暂停"}</span>
+                  </button>
+                </div>
+
+                {audioPlayFailed && uiState === "waiting" && (
+                  <p className="text-center text-xs text-[#F59E0B] mt-3">⚠️ 音频未能播放，请点击「重播」重听</p>
+                )}
+                {emptyTranscriptAlert && (
+                  <p className="text-center text-xs text-[#EF4444] mt-3">🎤 未能识别，声音可能太小，请靠近麦克风重试</p>
+                )}
+                {uiState === "waiting" && !correctionOpen && !audioPlayFailed && !emptyTranscriptAlert && (
+                  <p className="text-center text-xs text-[#9CA3AF] mt-3">点击麦克风开始录音，再次点击停止并发送</p>
+                )}
+              </>
             )}
             {/* Voice mode correction panel */}
             {correctionOpen && (
