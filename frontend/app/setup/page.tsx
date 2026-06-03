@@ -3,7 +3,10 @@
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { api, audioUrl } from "@/lib/api";
-import type { Language, InterviewType, InterviewMode, InterviewInterface, PersonaType, JobAnalysisResponse } from "@/lib/types";
+import type {
+  Language, InterviewType, InterviewMode, InterviewInterface,
+  PersonaType, JobAnalysisResponse, ExtractedQuestion,
+} from "@/lib/types";
 
 const PERSONAS = [
   {
@@ -47,47 +50,94 @@ const INTERVIEW_TYPES = [
     label: "公司行为面",
     labelEn: "Behavioral",
     desc: "STAR法则，考察过往经历与软技能",
+    icon: "🏢",
   },
   {
     id: "technical" as InterviewType,
     label: "技术专项面",
     labelEn: "Technical",
     desc: "技术深度、系统设计、逻辑分析",
+    icon: "💻",
   },
   {
     id: "graduate" as InterviewType,
     label: "研究生招生面",
     labelEn: "Graduate",
     desc: "科研经历、学术动机、未来规划",
+    icon: "🎓",
   },
 ];
 
+const STEP_LABELS_ZH = ["语言", "面试类型", "基本信息", "岗位分析", "面试设置", "面试官"];
+const STEP_LABELS_EN = ["Language", "Type", "Info", "Analysis", "Settings", "Interviewer"];
+
 export default function SetupPage() {
   const router = useRouter();
-  const [step, setStep] = useState(0);
+
+  // Step 0: Language
   const [language, setLanguage] = useState<Language>("zh");
+
+  // Step 1: Interview type
+  const [interviewType, setInterviewType] = useState<InterviewType>("behavioral");
+
+  // Step 2: Basic info — shared
   const [name, setName] = useState("");
-  const [targetRole, setTargetRole] = useState("");
-  const [targetCompany, setTargetCompany] = useState("");
-  const [jobDescription, setJobDescription] = useState("");
-  const [analysisLoading, setAnalysisLoading] = useState(false);
-  const [analysisResult, setAnalysisResult] = useState<JobAnalysisResponse | null>(null);
-  const [refineNote, setRefineNote] = useState("");
-  const [refineLoading, setRefineLoading] = useState(false);
-  const [refineWithSearch, setRefineWithSearch] = useState(false);
   const [resumeText, setResumeText] = useState("");
   const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfError, setPdfError] = useState("");
-  const [interviewType, setInterviewType] = useState<InterviewType>("behavioral");
+  // behavioral / technical
+  const [targetRole, setTargetRole] = useState("");
+  const [targetCompany, setTargetCompany] = useState("");
+  const [jobDescription, setJobDescription] = useState("");
+  const [techStack, setTechStack] = useState("");
+  // graduate
+  const [targetSchool, setTargetSchool] = useState("");
+  const [targetDepartment, setTargetDepartment] = useState("");
+  const [targetAdvisor, setTargetAdvisor] = useState("");
+  const [researchDirection, setResearchDirection] = useState("");
+
+  // Step 3: Job analysis
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [analysisResult, setAnalysisResult] = useState<JobAnalysisResponse | null>(null);
+  const [extractedQuestions, setExtractedQuestions] = useState<ExtractedQuestion[]>([]);
+  const [searchAvailable, setSearchAvailable] = useState(true);
+  const [webSearchLoading, setWebSearchLoading] = useState(false);
+  const [webSearchDone, setWebSearchDone] = useState(false);
+  const [refineNote, setRefineNote] = useState("");
+  const [refineLoading, setRefineLoading] = useState(false);
+
+  // Step 4: Settings
   const [interviewMode, setInterviewMode] = useState<InterviewMode>("preset");
   const [interviewInterface, setInterviewInterface] = useState<InterviewInterface>("voice");
+
+  // Step 5: Persona
   const [persona, setPersona] = useState<PersonaType | null>(null);
-  const [loading, setLoading] = useState(false);
   const [previewLoading, setPreviewLoading] = useState<string | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  const [step, setStep] = useState(0);
+  const [loading, setLoading] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const zh = language === "zh";
+
+  // Derived helpers
+  const effectiveRole = interviewType === "graduate"
+    ? (targetDepartment || targetRole || "研究生申请")
+    : targetRole;
+
+  const effectiveCompany = interviewType === "graduate"
+    ? [targetSchool, targetDepartment].filter(Boolean).join(" ")
+    : targetCompany;
+
+  function isProfileComplete() {
+    if (!name.trim()) return false;
+    if (interviewType === "graduate") {
+      return targetSchool.trim().length > 0 && researchDirection.trim().length > 0;
+    }
+    return targetRole.trim().length > 0;
+  }
 
   async function handlePdfUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -97,12 +147,76 @@ export default function SetupPage() {
     try {
       const { text } = await api.parsePdf(file);
       setResumeText(text);
-    } catch (err) {
+    } catch {
       setPdfError(zh ? "PDF解析失败，请手动粘贴" : "PDF parse failed, please paste manually");
-      console.error(err);
     } finally {
       setPdfLoading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
+  async function handleProfileNext() {
+    setStep(3);
+    setAnalysisLoading(true);
+    setWebSearchDone(false);
+    setExtractedQuestions([]);
+    try {
+      const result = await api.analyzeRole({
+        target_role: effectiveRole,
+        target_company: effectiveCompany || undefined,
+        job_description: jobDescription || undefined,
+        language,
+      });
+      setAnalysisResult(result);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setAnalysisLoading(false);
+    }
+  }
+
+  async function handleWebSearch() {
+    setWebSearchLoading(true);
+    try {
+      const result = await api.webSearchAnalyze({
+        interview_type: interviewType,
+        target_role: effectiveRole,
+        target_company: effectiveCompany || undefined,
+        job_description: jobDescription || undefined,
+        target_school: targetSchool || undefined,
+        target_department: targetDepartment || undefined,
+        target_advisor: targetAdvisor || undefined,
+        research_direction: researchDirection || undefined,
+        language,
+      });
+      setAnalysisResult(result);
+      setExtractedQuestions(result.extracted_questions ?? []);
+      setSearchAvailable(result.search_available);
+      setWebSearchDone(true);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setWebSearchLoading(false);
+    }
+  }
+
+  async function handleRefine() {
+    if (!refineNote.trim()) return;
+    setRefineLoading(true);
+    try {
+      const result = await api.refineAnalysis({
+        target_role: effectiveRole,
+        target_company: effectiveCompany || undefined,
+        job_description: jobDescription || undefined,
+        user_note: refineNote,
+        language,
+      });
+      setAnalysisResult(result);
+      setRefineNote("");
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setRefineLoading(false);
     }
   }
 
@@ -120,53 +234,14 @@ export default function SetupPage() {
     }
   }
 
-  async function handleProfileNext() {
-    setStep(2);
-    setAnalysisLoading(true);
-    try {
-      const result = await api.analyzeRole({
-        target_role: targetRole,
-        target_company: targetCompany || undefined,
-        job_description: jobDescription || undefined,
-        language,
-      });
-      setAnalysisResult(result);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setAnalysisLoading(false);
-    }
-  }
-
-  async function handleRefine() {
-    if (!refineNote.trim()) return;
-    setRefineLoading(true);
-    try {
-      const result = await api.refineAnalysis({
-        target_role: targetRole,
-        target_company: targetCompany || undefined,
-        job_description: jobDescription || undefined,
-        user_note: refineNote,
-        with_search: refineWithSearch,
-        language,
-      });
-      setAnalysisResult(result);
-      setRefineNote("");
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setRefineLoading(false);
-    }
-  }
-
   async function handleStart() {
     if (!persona) return;
     setLoading(true);
     try {
       const { session_id } = await api.createSession({
         name,
-        target_role: targetRole,
-        target_company: targetCompany || undefined,
+        target_role: effectiveRole,
+        target_company: effectiveCompany || undefined,
         job_description: jobDescription || undefined,
         job_analysis: analysisResult ?? undefined,
         resume_text: resumeText || undefined,
@@ -185,10 +260,13 @@ export default function SetupPage() {
   const stepUnlocked = [
     true,
     step >= 1,
-    step >= 2 && name.trim().length > 0 && targetRole.trim().length > 0,
-    step >= 3,
+    step >= 2,
+    step >= 3 && isProfileComplete(),
     step >= 4,
+    step >= 5,
   ];
+
+  const stepLabels = zh ? STEP_LABELS_ZH : STEP_LABELS_EN;
 
   return (
     <div className="min-h-screen bg-[#FAFAFA] py-10 px-4">
@@ -196,25 +274,30 @@ export default function SetupPage() {
         {/* Header */}
         <div className="text-center mb-10">
           <span className="text-2xl font-bold text-[#6366F1]">MockMate</span>
-          <p className="text-[#6B7280] mt-1 text-sm">面试前准备</p>
+          <p className="text-[#6B7280] mt-1 text-sm">{zh ? "面试前准备" : "Interview Setup"}</p>
         </div>
 
         {/* Step indicators */}
-        <div className="flex items-center justify-center gap-2 mb-10">
-          {["语言", "基本信息", "岗位分析", "面试设置", "面试官"].map((s, i) => (
-            <div key={i} className="flex items-center gap-2">
-              <div
-                className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-all ${
-                  step === i
-                    ? "bg-[#6366F1] text-white"
-                    : step > i
-                    ? "bg-[#10B981] text-white"
-                    : "bg-[#E5E7EB] text-[#9CA3AF]"
-                }`}
-              >
-                {step > i ? "✓" : i + 1}
+        <div className="flex items-center justify-center gap-1.5 mb-10 flex-wrap">
+          {stepLabels.map((s, i) => (
+            <div key={i} className="flex items-center gap-1.5">
+              <div className="flex flex-col items-center gap-1">
+                <div
+                  className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium transition-all ${
+                    step === i
+                      ? "bg-[#6366F1] text-white"
+                      : step > i
+                      ? "bg-[#10B981] text-white"
+                      : "bg-[#E5E7EB] text-[#9CA3AF]"
+                  }`}
+                >
+                  {step > i ? "✓" : i + 1}
+                </div>
+                <span className="text-[10px] text-[#9CA3AF]">{s}</span>
               </div>
-              {i < 4 && <div className={`w-8 h-px ${step > i ? "bg-[#10B981]" : "bg-[#E5E7EB]"}`} />}
+              {i < stepLabels.length - 1 && (
+                <div className={`w-6 h-px mb-4 ${step > i ? "bg-[#10B981]" : "bg-[#E5E7EB]"}`} />
+              )}
             </div>
           ))}
         </div>
@@ -241,10 +324,38 @@ export default function SetupPage() {
           </div>
         </StepCard>
 
-        {/* Step 1: Profile */}
+        {/* Step 1: Interview type */}
         {stepUnlocked[1] && (
-          <StepCard title={zh ? "基本信息" : "Your Information"} active={step === 1}>
+          <StepCard title={zh ? "面试类型" : "Interview Type"} active={step === 1}>
+            <div className="space-y-3">
+              {INTERVIEW_TYPES.map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => { setInterviewType(t.id); setStep(2); }}
+                  className={`w-full p-4 rounded-xl border-2 text-left transition-all flex items-center gap-4 ${
+                    interviewType === t.id
+                      ? "border-[#6366F1] bg-[#EEF2FF]"
+                      : "border-[#E5E7EB] bg-white hover:border-[#6366F1]/50"
+                  }`}
+                >
+                  <span className="text-2xl">{t.icon}</span>
+                  <div>
+                    <div className="font-semibold text-[#111827] text-sm">
+                      {zh ? t.label : t.labelEn}
+                    </div>
+                    <div className="text-xs text-[#6B7280] mt-0.5">{t.desc}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </StepCard>
+        )}
+
+        {/* Step 2: Basic info — type-specific */}
+        {stepUnlocked[2] && (
+          <StepCard title={zh ? "基本信息" : "Your Information"} active={step === 2}>
             <div className="space-y-4">
+              {/* Name — always */}
               <div>
                 <label className="text-sm font-medium text-[#374151] block mb-1">
                   {zh ? "姓名" : "Name"} *
@@ -256,21 +367,117 @@ export default function SetupPage() {
                   className="w-full border border-[#E5E7EB] rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-[#6366F1] transition-colors"
                 />
               </div>
-              <div>
-                <label className="text-sm font-medium text-[#374151] block mb-1">
-                  {zh ? "目标职位" : "Target Role"} *
-                </label>
-                <input
-                  value={targetRole}
-                  onChange={(e) => setTargetRole(e.target.value)}
-                  placeholder={zh ? "如：产品经理、前端工程师" : "e.g. Product Manager, Frontend Engineer"}
-                  className="w-full border border-[#E5E7EB] rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-[#6366F1] transition-colors"
-                />
-              </div>
+
+              {/* Behavioral / Technical fields */}
+              {(interviewType === "behavioral" || interviewType === "technical") && (
+                <>
+                  <div>
+                    <label className="text-sm font-medium text-[#374151] block mb-1">
+                      {zh ? "目标职位" : "Target Role"} *
+                    </label>
+                    <input
+                      value={targetRole}
+                      onChange={(e) => setTargetRole(e.target.value)}
+                      placeholder={zh ? "如：产品经理、前端工程师" : "e.g. Product Manager, Frontend Engineer"}
+                      className="w-full border border-[#E5E7EB] rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-[#6366F1] transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-[#374151] block mb-1">
+                      {zh ? "目标公司（选填）" : "Target Company (optional)"}
+                    </label>
+                    <input
+                      value={targetCompany}
+                      onChange={(e) => setTargetCompany(e.target.value)}
+                      placeholder={zh ? "如：字节跳动、腾讯" : "e.g. Google, Meta"}
+                      className="w-full border border-[#E5E7EB] rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-[#6366F1] transition-colors"
+                    />
+                  </div>
+                  {interviewType === "technical" && (
+                    <div>
+                      <label className="text-sm font-medium text-[#374151] block mb-1">
+                        {zh ? "技术栈（选填）" : "Tech Stack (optional)"}
+                      </label>
+                      <input
+                        value={techStack}
+                        onChange={(e) => setTechStack(e.target.value)}
+                        placeholder={zh ? "如：React / Node.js / PostgreSQL" : "e.g. React / Node.js / PostgreSQL"}
+                        className="w-full border border-[#E5E7EB] rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-[#6366F1] transition-colors"
+                      />
+                    </div>
+                  )}
+                  <div>
+                    <label className="text-sm font-medium text-[#374151] block mb-1">
+                      {zh ? "职位描述 / JD（选填）" : "Job Description (optional)"}
+                    </label>
+                    <textarea
+                      value={jobDescription}
+                      onChange={(e) => setJobDescription(e.target.value)}
+                      rows={3}
+                      placeholder={zh ? "粘贴招聘 JD，AI 将据此定制考察方向" : "Paste the job description — AI will tailor the interview focus"}
+                      className="w-full border border-[#E5E7EB] rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-[#6366F1] transition-colors resize-none"
+                    />
+                  </div>
+                </>
+              )}
+
+              {/* Graduate fields */}
+              {interviewType === "graduate" && (
+                <>
+                  <div>
+                    <label className="text-sm font-medium text-[#374151] block mb-1">
+                      {zh ? "目标学校" : "Target School"} *
+                    </label>
+                    <input
+                      value={targetSchool}
+                      onChange={(e) => setTargetSchool(e.target.value)}
+                      placeholder={zh ? "如：清华大学、北京大学" : "e.g. Tsinghua University"}
+                      className="w-full border border-[#E5E7EB] rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-[#6366F1] transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-[#374151] block mb-1">
+                      {zh ? "学院 / 专业（选填）" : "Department / Program (optional)"}
+                    </label>
+                    <input
+                      value={targetDepartment}
+                      onChange={(e) => setTargetDepartment(e.target.value)}
+                      placeholder={zh ? "如：计算机科学与技术、软件工程" : "e.g. Computer Science, Software Engineering"}
+                      className="w-full border border-[#E5E7EB] rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-[#6366F1] transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-[#374151] block mb-1">
+                      {zh ? "目标导师（选填）" : "Target Advisor (optional)"}
+                    </label>
+                    <input
+                      value={targetAdvisor}
+                      onChange={(e) => setTargetAdvisor(e.target.value)}
+                      placeholder={zh ? "如：张伟教授（不填则按学院搜索）" : "e.g. Prof. Zhang Wei (leave blank to search by department)"}
+                      className="w-full border border-[#E5E7EB] rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-[#6366F1] transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-[#374151] block mb-1">
+                      {zh ? "研究方向 / 申请方向" : "Research Direction"} *
+                    </label>
+                    <input
+                      value={researchDirection}
+                      onChange={(e) => setResearchDirection(e.target.value)}
+                      placeholder={zh ? "如：计算机视觉、自然语言处理" : "e.g. Computer Vision, NLP"}
+                      className="w-full border border-[#E5E7EB] rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-[#6366F1] transition-colors"
+                    />
+                  </div>
+                </>
+              )}
+
+              {/* Resume — always */}
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="text-sm font-medium text-[#374151]">
-                    {zh ? "简历内容（可选）" : "Resume (optional)"}
+                    {interviewType === "graduate"
+                      ? (zh ? "简历 / 个人陈述（选填）" : "CV / Personal Statement (optional)")
+                      : (zh ? "简历内容（选填）" : "Resume (optional)")}
                   </label>
                   <button
                     type="button"
@@ -278,21 +485,11 @@ export default function SetupPage() {
                     disabled={pdfLoading}
                     className="text-xs bg-[#EEF2FF] hover:bg-[#E0E7FF] text-[#6366F1] px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
                   >
-                    {pdfLoading
-                      ? (zh ? "解析中..." : "Parsing...")
-                      : (zh ? "上传 PDF" : "Upload PDF")}
+                    {pdfLoading ? (zh ? "解析中..." : "Parsing...") : (zh ? "上传 PDF" : "Upload PDF")}
                   </button>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept=".pdf"
-                    className="hidden"
-                    onChange={handlePdfUpload}
-                  />
+                  <input ref={fileInputRef} type="file" accept=".pdf" className="hidden" onChange={handlePdfUpload} />
                 </div>
-                {pdfError && (
-                  <p className="text-xs text-red-500 mb-1">{pdfError}</p>
-                )}
+                {pdfError && <p className="text-xs text-red-500 mb-1">{pdfError}</p>}
                 <textarea
                   value={resumeText}
                   onChange={(e) => setResumeText(e.target.value)}
@@ -301,31 +498,9 @@ export default function SetupPage() {
                   className="w-full border border-[#E5E7EB] rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-[#6366F1] transition-colors resize-none"
                 />
               </div>
-              <div>
-                <label className="text-sm font-medium text-[#374151] block mb-1">
-                  {zh ? "目标公司（选填）" : "Target Company (optional)"}
-                </label>
-                <input
-                  value={targetCompany}
-                  onChange={(e) => setTargetCompany(e.target.value)}
-                  placeholder={zh ? "如：字节跳动、腾讯" : "e.g. Google, Meta"}
-                  className="w-full border border-[#E5E7EB] rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-[#6366F1] transition-colors"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-[#374151] block mb-1">
-                  {zh ? "职位描述 / JD（选填）" : "Job Description (optional)"}
-                </label>
-                <textarea
-                  value={jobDescription}
-                  onChange={(e) => setJobDescription(e.target.value)}
-                  rows={3}
-                  placeholder={zh ? "粘贴招聘 JD，AI 将据此定制考察方向" : "Paste the job description — AI will tailor the interview focus"}
-                  className="w-full border border-[#E5E7EB] rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-[#6366F1] transition-colors resize-none"
-                />
-              </div>
+
               <button
-                disabled={!name.trim() || !targetRole.trim()}
+                disabled={!isProfileComplete()}
                 onClick={handleProfileNext}
                 className="w-full bg-[#6366F1] hover:bg-[#4F46E5] disabled:bg-[#E5E7EB] disabled:text-[#9CA3AF] text-white font-semibold py-3 rounded-xl transition-colors"
               >
@@ -335,9 +510,9 @@ export default function SetupPage() {
           </StepCard>
         )}
 
-        {/* Step 2: Job Analysis */}
-        {stepUnlocked[2] && (
-          <StepCard title={zh ? "岗位分析" : "Role Analysis"} active={step === 2}>
+        {/* Step 3: Job Analysis */}
+        {stepUnlocked[3] && (
+          <StepCard title={zh ? "岗位分析" : "Role Analysis"} active={step === 3}>
             {analysisLoading ? (
               <div className="flex flex-col items-center py-8 gap-3 text-[#6B7280]">
                 <div className="flex gap-1">
@@ -345,10 +520,11 @@ export default function SetupPage() {
                   <span className="w-2 h-2 bg-[#6366F1] rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
                   <span className="w-2 h-2 bg-[#6366F1] rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
                 </div>
-                <span className="text-sm">{zh ? "正在分析岗位..." : "Analyzing role..."}</span>
+                <span className="text-sm">{zh ? "正在分析..." : "Analyzing..."}</span>
               </div>
             ) : analysisResult ? (
               <div className="space-y-4">
+                {/* Analysis result */}
                 <div className="bg-[#F8F9FF] rounded-xl p-4 border border-[#E5E7EB]">
                   <p className="text-xs text-[#6B7280] mb-1">{zh ? "岗位总结" : "Summary"}</p>
                   <p className="text-sm text-[#111827] font-medium">{analysisResult.summary}</p>
@@ -380,14 +556,77 @@ export default function SetupPage() {
                   <p className="text-xs text-[#78350F]">{analysisResult.key_tips}</p>
                 </div>
 
+                {/* Web search — only for behavioral / graduate */}
+                {(interviewType === "behavioral" || interviewType === "graduate") && (
+                  <div className="border border-[#E5E7EB] rounded-xl p-4 bg-[#F9FAFB]">
+                    {!webSearchDone ? (
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-medium text-[#374151]">
+                            {zh ? "网络搜索真题增强" : "Search for Real Questions"}
+                          </p>
+                          <p className="text-xs text-[#6B7280] mt-0.5">
+                            {zh
+                              ? interviewType === "graduate"
+                                ? "搜索该校该导师的真实研究生面试题"
+                                : "搜索该公司岗位的真实面经题目"
+                              : "Find real interview questions from the web"}
+                          </p>
+                        </div>
+                        <button
+                          onClick={handleWebSearch}
+                          disabled={webSearchLoading}
+                          className="px-4 py-2 bg-[#6366F1] hover:bg-[#4F46E5] disabled:bg-[#E5E7EB] disabled:text-[#9CA3AF] text-white text-xs rounded-xl transition-colors flex-shrink-0"
+                        >
+                          {webSearchLoading
+                            ? (zh ? "搜索中..." : "Searching...")
+                            : (zh ? "开始搜索" : "Search")}
+                        </button>
+                      </div>
+                    ) : (
+                      <div>
+                        {!searchAvailable ? (
+                          <p className="text-xs text-[#6B7280]">
+                            {zh ? "网络搜索暂时不可用，已使用 AI 直接分析" : "Search unavailable, using AI analysis only"}
+                          </p>
+                        ) : extractedQuestions.length > 0 ? (
+                          <div>
+                            <p className="text-xs font-medium text-[#374151] mb-2">
+                              {zh
+                                ? `从网络搜索中发现 ${extractedQuestions.length} 道真实面试题`
+                                : `Found ${extractedQuestions.length} real interview questions`}
+                            </p>
+                            <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+                              {extractedQuestions.map((q, i) => (
+                                <div key={i} className="flex gap-2 text-xs">
+                                  <span className="text-[#6366F1] flex-shrink-0 font-medium bg-[#EEF2FF] px-1.5 py-0.5 rounded text-[10px]">
+                                    {q.category}
+                                  </span>
+                                  <span className="text-[#374151]">{q.question}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-[#6B7280]">
+                            {zh ? "未找到结构化题目，已用搜索信息辅助分析" : "No structured questions found; search context used for analysis"}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Refine */}
                 <div className="border-t border-[#E5E7EB] pt-4">
-                  <p className="text-xs font-medium text-[#374151] mb-2">{zh ? "有不准确的地方？告诉我" : "Something off? Tell me"}</p>
-                  <div className="flex gap-2 mb-2">
+                  <p className="text-xs font-medium text-[#374151] mb-2">
+                    {zh ? "有不准确的地方？告诉我" : "Something off? Tell me"}
+                  </p>
+                  <div className="flex gap-2">
                     <input
                       value={refineNote}
                       onChange={e => setRefineNote(e.target.value)}
-                      placeholder={zh ? "如：我的岗位更偏向 B 端运营，不是增长方向" : "e.g. My role is more B2B operations, not growth"}
+                      placeholder={zh ? "如：更偏向 B 端运营，不是增长方向" : "e.g. More B2B ops, not growth"}
                       className="flex-1 border border-[#E5E7EB] rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-[#6366F1]"
                     />
                     <button
@@ -398,31 +637,24 @@ export default function SetupPage() {
                       {refineLoading ? (zh ? "分析中..." : "Analyzing...") : zh ? "重新分析" : "Re-analyze"}
                     </button>
                   </div>
-                  <label className="flex items-center gap-2 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={refineWithSearch}
-                      onChange={e => setRefineWithSearch(e.target.checked)}
-                      className="w-3.5 h-3.5 accent-[#6366F1]"
-                    />
-                    <span className="text-xs text-[#6B7280]">
-                      {zh ? "🔍 同时搜索最新网络信息辅助分析" : "🔍 Also search the web for latest info"}
-                    </span>
-                  </label>
                 </div>
 
                 <button
-                  onClick={() => setStep(3)}
+                  onClick={() => setStep(4)}
                   className="w-full bg-[#6366F1] hover:bg-[#4F46E5] text-white font-semibold py-3 rounded-xl text-sm transition-colors"
                 >
                   {zh ? "下一步" : "Next"}
                 </button>
               </div>
             ) : (
-              /* Analysis failed or not triggered — show skip option */
               <div className="text-center py-6 space-y-4">
-                <p className="text-sm text-[#6B7280]">{zh ? "分析加载失败，可以跳过此步骤" : "Analysis unavailable, you can skip this step"}</p>
-                <button onClick={() => setStep(3)} className="bg-[#6366F1] hover:bg-[#4F46E5] text-white font-semibold px-8 py-3 rounded-xl text-sm transition-colors">
+                <p className="text-sm text-[#6B7280]">
+                  {zh ? "分析加载失败，可以跳过此步骤" : "Analysis unavailable, you can skip this step"}
+                </p>
+                <button
+                  onClick={() => setStep(4)}
+                  className="bg-[#6366F1] hover:bg-[#4F46E5] text-white font-semibold px-8 py-3 rounded-xl text-sm transition-colors"
+                >
                   {zh ? "跳过 →" : "Skip →"}
                 </button>
               </div>
@@ -430,34 +662,10 @@ export default function SetupPage() {
           </StepCard>
         )}
 
-        {/* Step 3: Type + Mode + Interface */}
-        {stepUnlocked[3] && (
-          <StepCard title={zh ? "面试类型与模式" : "Interview Type & Mode"} active={step === 3}>
+        {/* Step 4: Mode + Interface */}
+        {stepUnlocked[4] && (
+          <StepCard title={zh ? "面试设置" : "Interview Settings"} active={step === 4}>
             <div className="space-y-6">
-              <div>
-                <p className="text-sm font-medium text-[#374151] mb-3">
-                  {zh ? "面试类型" : "Interview Type"}
-                </p>
-                <div className="space-y-3">
-                  {INTERVIEW_TYPES.map((t) => (
-                    <button
-                      key={t.id}
-                      onClick={() => setInterviewType(t.id)}
-                      className={`w-full p-4 rounded-xl border-2 text-left transition-all ${
-                        interviewType === t.id
-                          ? "border-[#6366F1] bg-[#EEF2FF]"
-                          : "border-[#E5E7EB] bg-white hover:border-[#6366F1]/50"
-                      }`}
-                    >
-                      <div className="font-semibold text-[#111827] text-sm">
-                        {zh ? t.label : t.labelEn}
-                      </div>
-                      <div className="text-xs text-[#6B7280] mt-0.5">{t.desc}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
               <div>
                 <p className="text-sm font-medium text-[#374151] mb-3">
                   {zh ? "面试模式" : "Interview Mode"}
@@ -520,7 +728,7 @@ export default function SetupPage() {
               </div>
 
               <button
-                onClick={() => setStep(4)}
+                onClick={() => setStep(5)}
                 className="w-full bg-[#6366F1] hover:bg-[#4F46E5] text-white font-semibold py-3 rounded-xl transition-colors"
               >
                 {zh ? "下一步" : "Next"}
@@ -529,9 +737,9 @@ export default function SetupPage() {
           </StepCard>
         )}
 
-        {/* Step 4: Persona */}
-        {stepUnlocked[4] && (
-          <StepCard title={zh ? "选择面试官" : "Choose Your Interviewer"} active={step === 4}>
+        {/* Step 5: Persona */}
+        {stepUnlocked[5] && (
+          <StepCard title={zh ? "选择面试官" : "Choose Your Interviewer"} active={step === 5}>
             <div className="space-y-4">
               {PERSONAS.map((p) => (
                 <div
@@ -548,12 +756,8 @@ export default function SetupPage() {
                       <div className="text-4xl">{p.emoji}</div>
                       <div>
                         <div className="font-semibold text-[#111827]">{p.name}</div>
-                        <div className="text-xs text-[#6B7280]">
-                          {zh ? p.title : p.titleEn}
-                        </div>
-                        <div className="text-xs text-[#6B7280] mt-0.5">
-                          {zh ? p.style : p.styleEn}
-                        </div>
+                        <div className="text-xs text-[#6B7280]">{zh ? p.title : p.titleEn}</div>
+                        <div className="text-xs text-[#6B7280] mt-0.5">{zh ? p.style : p.styleEn}</div>
                       </div>
                     </div>
                     <button

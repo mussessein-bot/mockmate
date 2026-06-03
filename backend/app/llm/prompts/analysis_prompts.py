@@ -100,3 +100,42 @@ Role: {target_role}{jd_str}{extra_str}"""
         {"role": "system", "content": system},
         {"role": "user", "content": user},
     ]
+
+
+def build_extraction_prompt(search_text: str, interview_type: str, language: str) -> list[dict]:
+    """Extract real interview questions from raw search results."""
+    if language == "zh":
+        type_hint = {
+            "behavioral": "行为面试题（STAR 格式）",
+            "graduate": "研究生面试题（学术动机、科研经历、专业知识等）",
+            "technical": "技术面试题（算法、系统设计、技术概念等）",
+        }.get(interview_type, "面试题")
+        system = f"""你是一个面试题提取助手。从网络搜索结果中提取真实的{type_hint}。
+要求：
+- 只提取明确的面试题目，不提取经验叙述、答案或评价
+- 去重，合并措辞相似的题目
+- 按类别分组（如自我介绍、项目经历、情景题、专业知识等）
+- 若内容中没有有效题目，返回空列表
+输出严格 JSON，不含其他文字：
+{{"questions": [{{"category": "类别名", "question": "具体题目"}}]}}"""
+        user = f"请从以下搜索内容中提取面试题目：\n\n{search_text}"
+    else:
+        type_hint = {
+            "behavioral": "behavioral interview questions (STAR format)",
+            "graduate": "graduate school interview questions (research motivation, academic background)",
+            "technical": "technical interview questions (algorithms, system design, concepts)",
+        }.get(interview_type, "interview questions")
+        system = f"""You are an interview question extractor. Extract real {type_hint} from web search results.
+Rules:
+- Only extract clear interview questions, not personal narratives, answers, or evaluations
+- Deduplicate and merge similar questions
+- Group by category (e.g. self-introduction, project experience, situational, technical knowledge)
+- Return empty list if no valid questions found
+Output strict JSON only:
+{{"questions": [{{"category": "category name", "question": "specific question"}}]}}"""
+        user = f"Extract interview questions from the following search content:\n\n{search_text}"
+
+    return [
+        {"role": "system", "content": system},
+        {"role": "user", "content": user},
+    ]

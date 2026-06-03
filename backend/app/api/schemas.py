@@ -23,10 +23,16 @@ class RefineAnalysisRequest(BaseModel):
 
 
 class WebSearchAnalyzeRequest(BaseModel):
-    target_role:     str
-    target_company:  Optional[str] = None
-    job_description: Optional[str] = None
-    language:        str = "zh"
+    interview_type:      str             = "behavioral"
+    target_role:         str
+    target_company:      Optional[str]   = None
+    job_description:     Optional[str]   = None
+    # graduate-specific
+    target_school:       Optional[str]   = None
+    target_department:   Optional[str]   = None
+    target_advisor:      Optional[str]   = None
+    research_direction:  Optional[str]   = None
+    language:            str             = "zh"
 
 
 class JobAnalysisDimension(BaseModel):
@@ -40,6 +46,20 @@ class JobAnalysisResponse(BaseModel):
     interview_style:  str
     key_tips:         str
     summary:          str
+
+
+class ExtractedQuestion(BaseModel):
+    category: str
+    question: str
+
+
+class WebSearchAnalyzeResponse(BaseModel):
+    core_dimensions:     list[JobAnalysisDimension]
+    interview_style:     str
+    key_tips:            str
+    summary:             str
+    extracted_questions: list[ExtractedQuestion] = []
+    search_available:    bool = True
 
 
 class CreateSessionRequest(BaseModel):

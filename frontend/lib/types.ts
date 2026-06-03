@@ -18,6 +18,17 @@ export interface DimensionScore {
   feedback: string;
 }
 
+export interface SentenceAnnotation {
+  text: string;
+  label: "good" | "vague" | "weak" | "ok";
+  comment: string;
+}
+
+export interface AnswerCritique {
+  highlights: string[];
+  improvements: string[];
+}
+
 export interface EvaluationResult {
   question_index: number;
   question_text: string;
@@ -28,6 +39,8 @@ export interface EvaluationResult {
   is_probe_triggered: boolean;
   probe_reason: string | null;
   model_answer: string | null;
+  sentence_annotations: SentenceAnnotation[] | null;
+  answer_critique: AnswerCritique | null;
 }
 
 export interface SessionSummary {
@@ -94,6 +107,16 @@ export interface JobAnalysisResponse {
   interview_style: string;
   key_tips: string;
   summary: string;
+}
+
+export interface ExtractedQuestion {
+  category: string;
+  question: string;
+}
+
+export interface WebSearchAnalyzeResponse extends JobAnalysisResponse {
+  extracted_questions: ExtractedQuestion[];
+  search_available: boolean;
 }
 
 export interface CorrectionResponse {

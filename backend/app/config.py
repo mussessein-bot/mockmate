@@ -7,6 +7,9 @@ load_dotenv(BASE_DIR / ".env")
 
 # LLM
 ARK_API_KEY = os.getenv("ARK_API_KEY", "")
+
+# Web Search
+TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "")
 ARK_BASE_URL = "https://ark.cn-beijing.volces.com/api/coding/v3"
 ARK_MODEL = "DeepSeek-V4-Flash"
 

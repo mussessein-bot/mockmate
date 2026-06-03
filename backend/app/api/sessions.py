@@ -2,7 +2,8 @@ import json
 from fastapi import APIRouter, HTTPException
 from app.api.schemas import (
     CreateSessionRequest, CreateSessionResponse,
-    AnalyzeRoleRequest, RefineAnalysisRequest, WebSearchAnalyzeRequest, JobAnalysisResponse,
+    AnalyzeRoleRequest, RefineAnalysisRequest, WebSearchAnalyzeRequest,
+    JobAnalysisResponse, WebSearchAnalyzeResponse, ExtractedQuestion,
 )
 from app.core.models import InterviewSession, CandidateProfile
 from app.core.dimensions import DEFAULT_DIMENSIONS
@@ -11,8 +12,8 @@ from app.storage.session_store import save_session, load_session, delete_session
 from app.storage.database import get_db
 from app.core.exceptions import SessionNotFoundError
 from app.llm.client import chat_completion_json
-from app.llm.prompts.analysis_prompts import build_analysis_prompt
-from app.services.web_search import search_job_info
+from app.llm.prompts.analysis_prompts import build_analysis_prompt, build_extraction_prompt
+from app.services.web_search import search_job_info, search_interview_info
 
 router = APIRouter()
 
@@ -158,15 +159,59 @@ async def refine_analysis(body: RefineAnalysisRequest):
     return _parse_analysis(raw)
 
 
-@router.post("/web-search-analyze", response_model=JobAnalysisResponse)
+@router.post("/web-search-analyze", response_model=WebSearchAnalyzeResponse)
 async def web_search_analyze(body: WebSearchAnalyzeRequest):
-    search_text = await search_job_info(body.target_role, body.target_company)
+    # For graduate, synthesize target_role/company from structured fields
+    effective_role = body.target_role
+    effective_company = body.target_company
+    if body.interview_type == "graduate":
+        parts = [body.target_school or "", body.target_department or ""]
+        effective_company = " ".join(p for p in parts if p) or body.target_company
+
+    search_text = await search_interview_info(
+        interview_type=body.interview_type,
+        target_role=effective_role,
+        target_company=effective_company,
+        target_school=body.target_school,
+        target_department=body.target_department,
+        target_advisor=body.target_advisor,
+        research_direction=body.research_direction,
+    )
+
+    search_available = bool(search_text)
+
+    # Step 1: extract real interview questions from search results
+    extracted: list[ExtractedQuestion] = []
+    if search_text:
+        try:
+            extraction_messages = build_extraction_prompt(search_text, body.interview_type, body.language)
+            raw_extraction = await chat_completion_json(extraction_messages, temperature=0.1)
+            for q in raw_extraction.get("questions", []):
+                if q.get("question"):
+                    extracted.append(ExtractedQuestion(
+                        category=q.get("category", ""),
+                        question=q["question"],
+                    ))
+        except Exception:
+            pass
+
+    # Step 2: job analysis with search results as context
+    extra_context = None
+    if search_text:
+        extra_context = f"以下是互联网上搜索到的相关信息，供参考：\n{search_text}"
+
     messages = build_analysis_prompt(
-        target_role=body.target_role,
-        target_company=body.target_company,
+        target_role=effective_role,
+        target_company=effective_company,
         job_description=body.job_description,
         language=body.language,
-        extra_context=f"以下是互联网上搜索到的相关信息，供参考：\n{search_text}",
+        extra_context=extra_context,
     )
     raw = await chat_completion_json(messages, temperature=0.3)
-    return _parse_analysis(raw)
+    analysis = _parse_analysis(raw)
+
+    return WebSearchAnalyzeResponse(
+        **analysis,
+        extracted_questions=extracted,
+        search_available=search_available,
+    )

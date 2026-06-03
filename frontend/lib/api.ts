@@ -6,6 +6,7 @@ import type {
   InterviewInterface,
   CorrectionResponse,
   JobAnalysisResponse,
+  WebSearchAnalyzeResponse,
 } from "./types";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -52,8 +53,8 @@ export const api = {
   replayAudio: (sessionId: string) =>
     apiFetch<{ audio_url: string }>(`/api/interview/${sessionId}/replay-audio`),
 
-  finalize: (sessionId: string) =>
-    apiFetch<SessionSummary>(`/api/sessions/${sessionId}/finalize`, { method: "POST" }),
+  finalize: (sessionId: string, force = false) =>
+    apiFetch<SessionSummary>(`/api/sessions/${sessionId}/finalize${force ? "?force=true" : ""}`, { method: "POST" }),
 
   getFeedback: (sessionId: string) =>
     apiFetch<SessionSummary>(`/api/sessions/${sessionId}/feedback`),
@@ -70,8 +71,18 @@ export const api = {
       body: JSON.stringify({ language: "zh", ...payload }),
     }),
 
-  webSearchAnalyze: (payload: { target_role: string; target_company?: string; job_description?: string; language?: string }) =>
-    apiFetch<JobAnalysisResponse>("/api/web-search-analyze", {
+  webSearchAnalyze: (payload: {
+    interview_type: string;
+    target_role: string;
+    target_company?: string;
+    job_description?: string;
+    target_school?: string;
+    target_department?: string;
+    target_advisor?: string;
+    research_direction?: string;
+    language?: string;
+  }) =>
+    apiFetch<WebSearchAnalyzeResponse>("/api/web-search-analyze", {
       method: "POST",
       body: JSON.stringify({ language: "zh", ...payload }),
     }),
