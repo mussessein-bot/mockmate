@@ -40,6 +40,7 @@ class StrategyAgent(BaseAgent):
             language=self.language,
             topics_covered=topics_covered,
             recent_scores=recent_scores,
+            job_analysis=self.session.job_analysis or None,
         )
 
         data = await chat_completion_json(messages, temperature=0.4)

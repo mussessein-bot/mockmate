@@ -53,6 +53,8 @@ export interface CreateSessionPayload {
   name: string;
   target_role: string;
   target_company?: string;
+  job_description?: string;
+  job_analysis?: JobAnalysisResponse;
   resume_text?: string;
   language: Language;
   interview_type: InterviewType;
@@ -79,6 +81,19 @@ export interface RespondResponse {
   active_dimensions: string[];
   evaluation: EvaluationResult | null;
   should_end: boolean;
+}
+
+export interface JobAnalysisDimension {
+  name: string;
+  description: string;
+  weight: string;
+}
+
+export interface JobAnalysisResponse {
+  core_dimensions: JobAnalysisDimension[];
+  interview_style: string;
+  key_tips: string;
+  summary: string;
 }
 
 export interface CorrectionResponse {

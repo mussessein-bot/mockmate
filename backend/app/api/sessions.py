@@ -1,12 +1,18 @@
 import json
 from fastapi import APIRouter, HTTPException
-from app.api.schemas import CreateSessionRequest, CreateSessionResponse
+from app.api.schemas import (
+    CreateSessionRequest, CreateSessionResponse,
+    AnalyzeRoleRequest, RefineAnalysisRequest, WebSearchAnalyzeRequest, JobAnalysisResponse,
+)
 from app.core.models import InterviewSession, CandidateProfile
 from app.core.dimensions import DEFAULT_DIMENSIONS
 from app.core.memory import init_profile
 from app.storage.session_store import save_session, load_session, delete_session
 from app.storage.database import get_db
 from app.core.exceptions import SessionNotFoundError
+from app.llm.client import chat_completion_json
+from app.llm.prompts.analysis_prompts import build_analysis_prompt
+from app.services.web_search import search_job_info
 
 router = APIRouter()
 
@@ -17,6 +23,7 @@ async def create_session(body: CreateSessionRequest):
         name=body.name,
         target_role=body.target_role,
         target_company=body.target_company,
+        job_description=body.job_description,
         resume_text=body.resume_text,
         language=body.language,
     )
@@ -50,6 +57,7 @@ async def create_session(body: CreateSessionRequest):
         candidate_profile_json=init_profile(profile),
         max_questions=8 if body.interview_mode.value == "preset" else 12,
         interviewer_constraints=historical_constraints,
+        job_analysis=body.job_analysis or {},
     )
     await save_session(session)
     return CreateSessionResponse(
@@ -76,3 +84,60 @@ async def delete_session_route(session_id: str):
         return {"success": True}
     except SessionNotFoundError:
         raise HTTPException(status_code=404, detail="Session not found")
+
+
+def _parse_analysis(raw: dict) -> dict:
+    """Normalize LLM output to consistent JobAnalysis shape."""
+    dims = raw.get("core_dimensions", [])
+    return {
+        "core_dimensions": [
+            {
+                "name": d.get("name", ""),
+                "description": d.get("description", ""),
+                "weight": d.get("weight", "中"),
+            }
+            for d in dims
+        ],
+        "interview_style": raw.get("interview_style", ""),
+        "key_tips": raw.get("key_tips", ""),
+        "summary": raw.get("summary", ""),
+    }
+
+
+@router.post("/analyze-role", response_model=JobAnalysisResponse)
+async def analyze_role(body: AnalyzeRoleRequest):
+    messages = build_analysis_prompt(
+        target_role=body.target_role,
+        target_company=body.target_company,
+        job_description=body.job_description,
+        language=body.language,
+    )
+    raw = await chat_completion_json(messages, temperature=0.3)
+    return _parse_analysis(raw)
+
+
+@router.post("/refine-analysis", response_model=JobAnalysisResponse)
+async def refine_analysis(body: RefineAnalysisRequest):
+    messages = build_analysis_prompt(
+        target_role=body.target_role,
+        target_company=body.target_company,
+        job_description=body.job_description,
+        language=body.language,
+        extra_context=f"用户补充说明：{body.user_note}",
+    )
+    raw = await chat_completion_json(messages, temperature=0.3)
+    return _parse_analysis(raw)
+
+
+@router.post("/web-search-analyze", response_model=JobAnalysisResponse)
+async def web_search_analyze(body: WebSearchAnalyzeRequest):
+    search_text = await search_job_info(body.target_role, body.target_company)
+    messages = build_analysis_prompt(
+        target_role=body.target_role,
+        target_company=body.target_company,
+        job_description=body.job_description,
+        language=body.language,
+        extra_context=f"以下是互联网上搜索到的相关信息，供参考：\n{search_text}",
+    )
+    raw = await chat_completion_json(messages, temperature=0.3)
+    return _parse_analysis(raw)

@@ -60,6 +60,7 @@ class EvaluatorAgent(BaseAgent):
             profile_text=profile_text,
             language=self.language,
             can_probe=probe_allowed,
+            job_analysis=self.session.job_analysis or None,
         )
 
         raw = await chat_completion(messages, temperature=0.1)

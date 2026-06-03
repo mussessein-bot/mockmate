@@ -5,6 +5,7 @@ import type {
   SessionSummary,
   InterviewInterface,
   CorrectionResponse,
+  JobAnalysisResponse,
 } from "./types";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -56,6 +57,24 @@ export const api = {
 
   getFeedback: (sessionId: string) =>
     apiFetch<SessionSummary>(`/api/sessions/${sessionId}/feedback`),
+
+  analyzeRole: (payload: { target_role: string; target_company?: string; job_description?: string; language?: string }) =>
+    apiFetch<JobAnalysisResponse>("/api/analyze-role", {
+      method: "POST",
+      body: JSON.stringify({ language: "zh", ...payload }),
+    }),
+
+  refineAnalysis: (payload: { target_role: string; target_company?: string; job_description?: string; user_note: string; language?: string }) =>
+    apiFetch<JobAnalysisResponse>("/api/refine-analysis", {
+      method: "POST",
+      body: JSON.stringify({ language: "zh", ...payload }),
+    }),
+
+  webSearchAnalyze: (payload: { target_role: string; target_company?: string; job_description?: string; language?: string }) =>
+    apiFetch<JobAnalysisResponse>("/api/web-search-analyze", {
+      method: "POST",
+      body: JSON.stringify({ language: "zh", ...payload }),
+    }),
 
   submitCorrection: (sessionId: string, tags: string[], note?: string) =>
     apiFetch<CorrectionResponse>(`/api/interview/${sessionId}/correction`, {

@@ -58,11 +58,12 @@ class Message(BaseModel):
 
 
 class CandidateProfile(BaseModel):
-    name:           str
-    target_role:    str
-    target_company: Optional[str] = None
-    resume_text:    Optional[str] = None
-    language:       Language      = Language.ZH
+    name:            str
+    target_role:     str
+    target_company:  Optional[str] = None
+    job_description: Optional[str] = None
+    resume_text:     Optional[str] = None
+    language:        Language      = Language.ZH
 
 
 class DimensionScore(BaseModel):
@@ -114,5 +115,6 @@ class InterviewSession(BaseModel):
     summary:                 Optional[SessionSummary] = None
     interviewer_constraints: list[str] = Field(default_factory=list)
     last_strategy_decision:  dict      = Field(default_factory=dict)
+    job_analysis:            dict      = Field(default_factory=dict)
     created_at:         datetime = Field(default_factory=datetime.utcnow)
     updated_at:         datetime = Field(default_factory=datetime.utcnow)

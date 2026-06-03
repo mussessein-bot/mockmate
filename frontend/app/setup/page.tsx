@@ -3,7 +3,7 @@
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { api, audioUrl } from "@/lib/api";
-import type { Language, InterviewType, InterviewMode, InterviewInterface, PersonaType } from "@/lib/types";
+import type { Language, InterviewType, InterviewMode, InterviewInterface, PersonaType, JobAnalysisResponse } from "@/lib/types";
 
 const PERSONAS = [
   {
@@ -68,6 +68,13 @@ export default function SetupPage() {
   const [language, setLanguage] = useState<Language>("zh");
   const [name, setName] = useState("");
   const [targetRole, setTargetRole] = useState("");
+  const [targetCompany, setTargetCompany] = useState("");
+  const [jobDescription, setJobDescription] = useState("");
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [analysisResult, setAnalysisResult] = useState<JobAnalysisResponse | null>(null);
+  const [refineNote, setRefineNote] = useState("");
+  const [refineLoading, setRefineLoading] = useState(false);
+  const [searchLoading, setSearchLoading] = useState(false);
   const [resumeText, setResumeText] = useState("");
   const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfError, setPdfError] = useState("");
@@ -113,6 +120,61 @@ export default function SetupPage() {
     }
   }
 
+  async function handleProfileNext() {
+    setStep(2);
+    setAnalysisLoading(true);
+    try {
+      const result = await api.analyzeRole({
+        target_role: targetRole,
+        target_company: targetCompany || undefined,
+        job_description: jobDescription || undefined,
+        language,
+      });
+      setAnalysisResult(result);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setAnalysisLoading(false);
+    }
+  }
+
+  async function handleRefine() {
+    if (!refineNote.trim()) return;
+    setRefineLoading(true);
+    try {
+      const result = await api.refineAnalysis({
+        target_role: targetRole,
+        target_company: targetCompany || undefined,
+        job_description: jobDescription || undefined,
+        user_note: refineNote,
+        language,
+      });
+      setAnalysisResult(result);
+      setRefineNote("");
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setRefineLoading(false);
+    }
+  }
+
+  async function handleWebSearch() {
+    setSearchLoading(true);
+    try {
+      const result = await api.webSearchAnalyze({
+        target_role: targetRole,
+        target_company: targetCompany || undefined,
+        job_description: jobDescription || undefined,
+        language,
+      });
+      setAnalysisResult(result);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setSearchLoading(false);
+    }
+  }
+
   async function handleStart() {
     if (!persona) return;
     setLoading(true);
@@ -120,6 +182,9 @@ export default function SetupPage() {
       const { session_id } = await api.createSession({
         name,
         target_role: targetRole,
+        target_company: targetCompany || undefined,
+        job_description: jobDescription || undefined,
+        job_analysis: analysisResult ?? undefined,
         resume_text: resumeText || undefined,
         language,
         interview_type: interviewType,
@@ -138,6 +203,7 @@ export default function SetupPage() {
     step >= 1,
     step >= 2 && name.trim().length > 0 && targetRole.trim().length > 0,
     step >= 3,
+    step >= 4,
   ];
 
   return (
@@ -151,7 +217,7 @@ export default function SetupPage() {
 
         {/* Step indicators */}
         <div className="flex items-center justify-center gap-2 mb-10">
-          {["语言", "基本信息", "面试设置", "选择面试官"].map((s, i) => (
+          {["语言", "基本信息", "岗位分析", "面试设置", "面试官"].map((s, i) => (
             <div key={i} className="flex items-center gap-2">
               <div
                 className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-all ${
@@ -164,7 +230,7 @@ export default function SetupPage() {
               >
                 {step > i ? "✓" : i + 1}
               </div>
-              {i < 3 && <div className={`w-8 h-px ${step > i ? "bg-[#10B981]" : "bg-[#E5E7EB]"}`} />}
+              {i < 4 && <div className={`w-8 h-px ${step > i ? "bg-[#10B981]" : "bg-[#E5E7EB]"}`} />}
             </div>
           ))}
         </div>
@@ -251,9 +317,32 @@ export default function SetupPage() {
                   className="w-full border border-[#E5E7EB] rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-[#6366F1] transition-colors resize-none"
                 />
               </div>
+              <div>
+                <label className="text-sm font-medium text-[#374151] block mb-1">
+                  {zh ? "目标公司（选填）" : "Target Company (optional)"}
+                </label>
+                <input
+                  value={targetCompany}
+                  onChange={(e) => setTargetCompany(e.target.value)}
+                  placeholder={zh ? "如：字节跳动、腾讯" : "e.g. Google, Meta"}
+                  className="w-full border border-[#E5E7EB] rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-[#6366F1] transition-colors"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-[#374151] block mb-1">
+                  {zh ? "职位描述 / JD（选填）" : "Job Description (optional)"}
+                </label>
+                <textarea
+                  value={jobDescription}
+                  onChange={(e) => setJobDescription(e.target.value)}
+                  rows={3}
+                  placeholder={zh ? "粘贴招聘 JD，AI 将据此定制考察方向" : "Paste the job description — AI will tailor the interview focus"}
+                  className="w-full border border-[#E5E7EB] rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-[#6366F1] transition-colors resize-none"
+                />
+              </div>
               <button
                 disabled={!name.trim() || !targetRole.trim()}
-                onClick={() => setStep(2)}
+                onClick={handleProfileNext}
                 className="w-full bg-[#6366F1] hover:bg-[#4F46E5] disabled:bg-[#E5E7EB] disabled:text-[#9CA3AF] text-white font-semibold py-3 rounded-xl transition-colors"
               >
                 {zh ? "下一步" : "Next"}
@@ -262,9 +351,110 @@ export default function SetupPage() {
           </StepCard>
         )}
 
-        {/* Step 2: Type + Mode + Interface */}
+        {/* Step 2: Job Analysis */}
         {stepUnlocked[2] && (
-          <StepCard title={zh ? "面试类型与模式" : "Interview Type & Mode"} active={step === 2}>
+          <StepCard title={zh ? "岗位分析" : "Role Analysis"} active={step === 2}>
+            {analysisLoading ? (
+              <div className="flex flex-col items-center py-8 gap-3 text-[#6B7280]">
+                <div className="flex gap-1">
+                  <span className="w-2 h-2 bg-[#6366F1] rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                  <span className="w-2 h-2 bg-[#6366F1] rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                  <span className="w-2 h-2 bg-[#6366F1] rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                </div>
+                <span className="text-sm">{zh ? "正在分析岗位..." : "Analyzing role..."}</span>
+              </div>
+            ) : analysisResult ? (
+              <div className="space-y-4">
+                <div className="bg-[#F8F9FF] rounded-xl p-4 border border-[#E5E7EB]">
+                  <p className="text-xs text-[#6B7280] mb-1">{zh ? "岗位总结" : "Summary"}</p>
+                  <p className="text-sm text-[#111827] font-medium">{analysisResult.summary}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-[#374151] mb-2">{zh ? "核心考察方向" : "Core Assessment Areas"}</p>
+                  <div className="space-y-2">
+                    {analysisResult.core_dimensions.map((d, i) => (
+                      <div key={i} className="flex items-start gap-3 p-3 bg-white border border-[#E5E7EB] rounded-xl">
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full flex-shrink-0 mt-0.5 ${
+                          d.weight === "高" || d.weight === "high" ? "bg-[#FEE2E2] text-[#DC2626]" :
+                          d.weight === "中" || d.weight === "medium" ? "bg-[#FEF3C7] text-[#D97706]" :
+                          "bg-[#F3F4F6] text-[#6B7280]"
+                        }`}>{d.weight}</span>
+                        <div>
+                          <p className="text-sm font-medium text-[#111827]">{d.name}</p>
+                          <p className="text-xs text-[#6B7280] mt-0.5">{d.description}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="bg-[#ECFDF5] rounded-xl p-3 border border-[#D1FAE5]">
+                  <p className="text-xs text-[#065F46] font-medium mb-1">{zh ? "面试风格" : "Interview Style"}</p>
+                  <p className="text-xs text-[#047857]">{analysisResult.interview_style}</p>
+                </div>
+                <div className="bg-[#FFFBEB] rounded-xl p-3 border border-[#FDE68A]">
+                  <p className="text-xs text-[#92400E] font-medium mb-1">{zh ? "准备建议" : "Preparation Tips"}</p>
+                  <p className="text-xs text-[#78350F]">{analysisResult.key_tips}</p>
+                </div>
+
+                {/* Refine */}
+                <div className="border-t border-[#E5E7EB] pt-4">
+                  <p className="text-xs font-medium text-[#374151] mb-2">{zh ? "有不准确的地方？告诉我" : "Something off? Tell me"}</p>
+                  <div className="flex gap-2">
+                    <input
+                      value={refineNote}
+                      onChange={e => setRefineNote(e.target.value)}
+                      placeholder={zh ? "如：我的岗位更偏向 B 端运营，不是增长方向" : "e.g. My role is more B2B operations, not growth"}
+                      className="flex-1 border border-[#E5E7EB] rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-[#6366F1]"
+                    />
+                    <button
+                      onClick={handleRefine}
+                      disabled={!refineNote.trim() || refineLoading}
+                      className="px-4 py-2 bg-[#6366F1] hover:bg-[#4F46E5] disabled:bg-[#E5E7EB] disabled:text-[#9CA3AF] text-white text-xs rounded-xl transition-colors flex-shrink-0"
+                    >
+                      {refineLoading ? "..." : zh ? "重新分析" : "Re-analyze"}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Web Search */}
+                <button
+                  onClick={handleWebSearch}
+                  disabled={searchLoading}
+                  className="w-full border border-[#E5E7EB] hover:border-[#6366F1] text-[#6B7280] hover:text-[#6366F1] text-xs py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2"
+                >
+                  {searchLoading ? (zh ? "搜索中..." : "Searching...") : (zh ? "🔍 搜索最新招聘信息" : "🔍 Search latest job listings")}
+                </button>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setStep(3)}
+                    className="flex-1 border border-[#E5E7EB] text-[#6B7280] py-3 rounded-xl text-sm hover:bg-[#F9FAFB] transition-colors"
+                  >
+                    {zh ? "跳过" : "Skip"}
+                  </button>
+                  <button
+                    onClick={() => setStep(3)}
+                    className="flex-1 bg-[#6366F1] hover:bg-[#4F46E5] text-white font-semibold py-3 rounded-xl text-sm transition-colors"
+                  >
+                    {zh ? "确认，继续 →" : "Confirm →"}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* Analysis failed or not triggered — show skip option */
+              <div className="text-center py-6 space-y-4">
+                <p className="text-sm text-[#6B7280]">{zh ? "分析加载失败，可以跳过此步骤" : "Analysis unavailable, you can skip this step"}</p>
+                <button onClick={() => setStep(3)} className="bg-[#6366F1] hover:bg-[#4F46E5] text-white font-semibold px-8 py-3 rounded-xl text-sm transition-colors">
+                  {zh ? "跳过 →" : "Skip →"}
+                </button>
+              </div>
+            )}
+          </StepCard>
+        )}
+
+        {/* Step 3: Type + Mode + Interface */}
+        {stepUnlocked[3] && (
+          <StepCard title={zh ? "面试类型与模式" : "Interview Type & Mode"} active={step === 3}>
             <div className="space-y-6">
               <div>
                 <p className="text-sm font-medium text-[#374151] mb-3">
@@ -352,7 +542,7 @@ export default function SetupPage() {
               </div>
 
               <button
-                onClick={() => setStep(3)}
+                onClick={() => setStep(4)}
                 className="w-full bg-[#6366F1] hover:bg-[#4F46E5] text-white font-semibold py-3 rounded-xl transition-colors"
               >
                 {zh ? "下一步" : "Next"}
@@ -361,9 +551,9 @@ export default function SetupPage() {
           </StepCard>
         )}
 
-        {/* Step 3: Persona */}
-        {stepUnlocked[3] && (
-          <StepCard title={zh ? "选择面试官" : "Choose Your Interviewer"} active={step === 3}>
+        {/* Step 4: Persona */}
+        {stepUnlocked[4] && (
+          <StepCard title={zh ? "选择面试官" : "Choose Your Interviewer"} active={step === 4}>
             <div className="space-y-4">
               {PERSONAS.map((p) => (
                 <div

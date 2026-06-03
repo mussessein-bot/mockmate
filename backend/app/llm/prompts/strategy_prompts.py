@@ -117,6 +117,26 @@ def _difficulty_instruction_en(recent_scores: list[float]) -> str:
     return f"[Difficulty: Standard] Avg score {avg:.1f} — maintain current difficulty."
 
 
+def _job_analysis_text_zh(job_analysis: dict) -> str:
+    dims = job_analysis.get("core_dimensions", [])
+    if not dims:
+        return ""
+    lines = ["【岗位核心考察方向】请优先围绕以下方向选择话题："]
+    for d in dims:
+        lines.append(f"- {d['name']}（权重：{d.get('weight','中')}）：{d.get('description','')}")
+    return "\n".join(lines)
+
+
+def _job_analysis_text_en(job_analysis: dict) -> str:
+    dims = job_analysis.get("core_dimensions", [])
+    if not dims:
+        return ""
+    lines = ["[Job Focus Areas] Prioritize topics aligned with these dimensions:"]
+    for d in dims:
+        lines.append(f"- {d['name']} (weight: {d.get('weight','medium')}): {d.get('description','')}")
+    return "\n".join(lines)
+
+
 def build_strategy_prompt(
     state: str,
     question_count: int,
@@ -133,6 +153,7 @@ def build_strategy_prompt(
     language: str,
     topics_covered: list[str] | None = None,
     recent_scores: list[float] | None = None,
+    job_analysis: dict | None = None,
 ) -> list[dict]:
     system = STRATEGY_SYSTEM_ZH if language == "zh" else STRATEGY_SYSTEM_EN
 
@@ -153,9 +174,12 @@ def build_strategy_prompt(
     )
     difficulty_line = f"\n{difficulty_instr}" if difficulty_instr else ""
 
+    ja = job_analysis or {}
     if language == "zh":
+        ja_text = _job_analysis_text_zh(ja)
+        ja_line = f"\n\n{ja_text}" if ja_text else ""
         exclusion = f"\n已覆盖话题（不要重复出题）：{', '.join(topics_covered)}" if topics_covered else ""
-        user = f"""{phase_instr}{difficulty_line}
+        user = f"""{phase_instr}{difficulty_line}{ja_line}
 
 当前面试状态：
 - 状态: {state}
@@ -175,8 +199,10 @@ def build_strategy_prompt(
 
 请决定下一步："""
     else:
+        ja_text = _job_analysis_text_en(ja)
+        ja_line = f"\n\n{ja_text}" if ja_text else ""
         exclusion = f"\nTopics already covered (do NOT repeat): {', '.join(topics_covered)}" if topics_covered else ""
-        user = f"""{phase_instr}{difficulty_line}
+        user = f"""{phase_instr}{difficulty_line}{ja_line}
 
 Current interview state:
 - State: {state}

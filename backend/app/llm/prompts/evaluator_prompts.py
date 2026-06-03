@@ -122,6 +122,7 @@ def build_evaluator_prompt(
     profile_text: str,
     language: str,
     can_probe: bool,
+    job_analysis: dict | None = None,
 ) -> list[dict]:
     system = EVALUATOR_SYSTEM_ZH if language == "zh" else EVALUATOR_SYSTEM_EN
 
@@ -131,9 +132,13 @@ def build_evaluator_prompt(
         if k in active_dimensions
     )
 
+    ja = job_analysis or {}
+    dims = ja.get("core_dimensions", [])
     if language == "zh":
+        ja_line = ("\n岗位核心考察方向（评分时优先参考）：" +
+                   "、".join(d["name"] for d in dims) if dims else "")
         user = f"""候选人画像：
-{profile_text}
+{profile_text}{ja_line}
 
 当前问题：{question}
 候选人回答：{answer}
@@ -145,8 +150,10 @@ def build_evaluator_prompt(
 
 请按评估流程逐步分析，最后输出 JSON："""
     else:
+        ja_line = ("\nJob focus areas (prioritize in scoring): " +
+                   ", ".join(d["name"] for d in dims) if dims else "")
         user = f"""Candidate Profile:
-{profile_text}
+{profile_text}{ja_line}
 
 Current Question: {question}
 Candidate Answer: {answer}

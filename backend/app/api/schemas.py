@@ -6,10 +6,47 @@ from app.core.models import (
 )
 
 
+class AnalyzeRoleRequest(BaseModel):
+    target_role:     str
+    target_company:  Optional[str] = None
+    job_description: Optional[str] = None
+    language:        str = "zh"
+
+
+class RefineAnalysisRequest(BaseModel):
+    target_role:     str
+    target_company:  Optional[str] = None
+    job_description: Optional[str] = None
+    user_note:       str
+    language:        str = "zh"
+
+
+class WebSearchAnalyzeRequest(BaseModel):
+    target_role:     str
+    target_company:  Optional[str] = None
+    job_description: Optional[str] = None
+    language:        str = "zh"
+
+
+class JobAnalysisDimension(BaseModel):
+    name:        str
+    description: str
+    weight:      str  # "高" | "中" | "低"
+
+
+class JobAnalysisResponse(BaseModel):
+    core_dimensions:  list[JobAnalysisDimension]
+    interview_style:  str
+    key_tips:         str
+    summary:          str
+
+
 class CreateSessionRequest(BaseModel):
     name:                str
     target_role:         str
     target_company:      Optional[str]       = None
+    job_description:     Optional[str]       = None
+    job_analysis:        Optional[dict]      = None
     resume_text:         Optional[str]       = None
     language:            Language            = Language.ZH
     interview_type:      InterviewType
