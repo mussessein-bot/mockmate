@@ -17,6 +17,28 @@ from app.services.web_search import search_job_info
 router = APIRouter()
 
 
+async def _parse_resume(resume_text: str) -> dict:
+    """LLM-parse resume into structured JSON for interviewer personalization."""
+    messages = [
+        {"role": "system", "content": "你是简历解析助手，输出严格 JSON，不含其他文字。"},
+        {"role": "user", "content": f"""从以下简历提取结构化信息，输出 JSON：
+{{
+  "main_projects": ["项目名：一句话简介"],
+  "tech_stack": ["技术1", "技术2"],
+  "years_of_experience": 2,
+  "highlights": ["最值得深挖的经历1", "最值得深挖的经历2"],
+  "potential_weak_areas": ["可能的薄弱点1"]
+}}
+
+简历：
+{resume_text}"""},
+    ]
+    try:
+        return await chat_completion_json(messages, temperature=0.2)
+    except Exception:
+        return {}
+
+
 @router.post("/sessions", response_model=CreateSessionResponse)
 async def create_session(body: CreateSessionRequest):
     profile = CandidateProfile(
@@ -47,6 +69,8 @@ async def create_session(body: CreateSessionRequest):
             f"历史用户对「{body.target_role}」岗位面试的反馈：请避免出现以下类型的问题：{summary}"
         )
 
+    resume_parsed = await _parse_resume(body.resume_text) if body.resume_text else {}
+
     session = InterviewSession(
         profile=profile,
         interview_type=body.interview_type,
@@ -55,6 +79,7 @@ async def create_session(body: CreateSessionRequest):
         persona=body.persona,
         active_dimensions=active_dims,
         candidate_profile_json=init_profile(profile),
+        resume_parsed=resume_parsed,
         max_questions=8 if body.interview_mode.value == "preset" else 12,
         interviewer_constraints=historical_constraints,
         job_analysis=body.job_analysis or {},

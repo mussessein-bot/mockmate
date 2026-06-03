@@ -36,6 +36,12 @@ class InterviewerAgent(BaseAgent):
     def _job_analysis(self) -> dict | None:
         return self.session.job_analysis or None
 
+    def _resume_parsed(self) -> dict | None:
+        return self.session.resume_parsed or None
+
+    def _candidate_profile(self) -> dict | None:
+        return self.session.candidate_profile_json or None
+
     async def generate_response(
         self,
         next_action: str,
@@ -58,6 +64,8 @@ class InterviewerAgent(BaseAgent):
             question_type=question_type,
             constraints=self._constraints(),
             job_analysis=self._job_analysis(),
+            resume_parsed=self._resume_parsed(),
+            candidate_profile=self._candidate_profile(),
         )
         return await chat_completion(messages, temperature=0.75)
 
@@ -83,6 +91,8 @@ class InterviewerAgent(BaseAgent):
             question_type=question_type,
             constraints=self._constraints(),
             job_analysis=self._job_analysis(),
+            resume_parsed=self._resume_parsed(),
+            candidate_profile=self._candidate_profile(),
         )
         async for chunk in chat_completion_stream(messages, temperature=0.75):
             yield chunk

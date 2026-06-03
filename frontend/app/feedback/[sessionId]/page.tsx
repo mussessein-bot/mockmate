@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
+import ReactMarkdown from "react-markdown";
 import {
   RadarChart, PolarGrid, PolarAngleAxis, Radar,
   ResponsiveContainer, Tooltip,
@@ -309,9 +310,9 @@ function QuestionCard({ ev }: { ev: EvaluationResult }) {
               {showModel ? "▲ 收起" : "▼"} 查看示范回答
             </button>
             {showModel && (
-              <p className="text-sm text-[#374151] bg-[#F0FDF4] rounded-lg p-3 leading-relaxed border border-emerald-100">
-                {ev.model_answer}
-              </p>
+              <div className="text-sm text-[#374151] bg-[#F0FDF4] rounded-lg p-3 leading-relaxed border border-emerald-100 prose prose-sm max-w-none prose-p:my-1 prose-li:my-0">
+                <ReactMarkdown>{ev.model_answer}</ReactMarkdown>
+              </div>
             )}
           </>
         )}

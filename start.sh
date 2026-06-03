@@ -53,7 +53,7 @@ echo "========================================"
 # ── Step 1：后端 tunnel ──────────────────────
 echo ""
 echo "⏳ [1/4] 建立后端 tunnel..."
-HTTPS_PROXY=http://127.0.0.1:7890 cloudflared tunnel --url http://localhost:8000 \
+cloudflared tunnel --url http://localhost:8000 \
   >"$BACKEND_TUNNEL_LOG" 2>&1 &
 PIDS+=($!)
 
@@ -109,7 +109,7 @@ echo -e "${GREEN}✅ 前端已启动（localhost:3001）${NC}"
 # ── Step 4：前端 tunnel ──────────────────────
 echo ""
 echo "⏳ [4/4] 建立前端 tunnel..."
-HTTPS_PROXY=http://127.0.0.1:7890 cloudflared tunnel --url http://localhost:3001 \
+cloudflared tunnel --url http://localhost:3001 \
   >"$FRONTEND_TUNNEL_LOG" 2>&1 &
 PIDS+=($!)
 

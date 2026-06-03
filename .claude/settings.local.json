@@ -33,7 +33,23 @@
       "Bash(xxd /Users/yuchenzhang/work/claude/project/interview_agent/backend/audio/2eba827d-006f-42fa-9fb3-749504b7142a_9d0f2090.mp3)",
       "Bash(git init *)",
       "Bash(git add *)",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "Bash(rm -rf /Users/yuchenzhang/work/claude/project/interview_agent/frontend/.git)",
+      "Bash(git rm *)",
+      "Bash(xxd /Users/yuchenzhang/work/claude/project/interview_agent/backend/audio/5519cc79-52c3-49f1-8f8a-790dbdbe5e5d_334e4a9c.mp3)",
+      "Read(//tmp/**)",
+      "Bash(xxd /tmp/test_audio.mp3)",
+      "Bash(ffprobe *)",
+      "WebSearch",
+      "WebFetch(domain:www.volcengine.com)",
+      "Bash(afplay /tmp/test_tts_fixed.mp3)",
+      "Bash(pip show *)",
+      "Bash(chmod +x *)",
+      "Bash(git commit *)",
+      "Bash(venv/bin/python *)",
+      "Bash(kill -HUP 80257)",
+      "Bash(bash start.sh)",
+      "Bash(git checkout *)"
     ]
   }
 }

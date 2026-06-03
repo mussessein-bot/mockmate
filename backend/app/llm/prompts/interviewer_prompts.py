@@ -1,4 +1,5 @@
 from app.config import PERSONAS
+from app.core.memory import profile_to_text
 
 # Opening lines per persona
 OPENING_ZH = {
@@ -177,6 +178,8 @@ def build_interviewer_prompt(
     question_type: str = "behavioral",
     constraints: list[str] | None = None,
     job_analysis: dict | None = None,
+    resume_parsed: dict | None = None,
+    candidate_profile: dict | None = None,
 ) -> list[dict]:
     system_map = PERSONA_SYSTEM_ZH if language == "zh" else PERSONA_SYSTEM_EN
     system = system_map[persona]
@@ -216,19 +219,42 @@ def build_interviewer_prompt(
             qtype_hint = _QTYPE_HINT_EN.get(question_type, _QTYPE_HINT_EN["behavioral"])
             instruction = f"Ask the next interview question. Topic: {topic}. Question type: {qtype_hint}. Target role: {target_role}. Briefly acknowledge the previous answer (1 sentence), then ask the question in the specified format."
 
+    context_parts: list[str] = []
+
+    if constraints:
+        prefix = ("注意：根据用户反馈，请避免以下问题：\n" if language == "zh" else "Note: Based on user feedback, avoid the following:\n")
+        prefix += "\n".join(f"- {c}" for c in constraints)
+        context_parts.append(prefix)
+
     ja = job_analysis or {}
     ja_dims = ja.get("core_dimensions", [])
     if ja_dims:
         if language == "zh":
-            ja_prefix = "岗位核心考察方向（问题请围绕这些方向）：" + "、".join(d["name"] for d in ja_dims) + "\n\n"
+            context_parts.append("岗位核心考察方向（问题请围绕这些方向）：" + "、".join(d["name"] for d in ja_dims))
         else:
-            ja_prefix = "Job focus areas (align questions to these): " + ", ".join(d["name"] for d in ja_dims) + "\n\n"
-        instruction = ja_prefix + instruction
+            context_parts.append("Job focus areas (align questions to these): " + ", ".join(d["name"] for d in ja_dims))
 
-    if constraints:
-        prefix = ("注意：根据用户反馈，请避免以下问题：\n" if language == "zh" else "Note: Based on user feedback, avoid the following:\n")
-        prefix += "\n".join(f"- {c}" for c in constraints) + "\n\n"
-        instruction = prefix + instruction
+    if resume_parsed and any(resume_parsed.values()):
+        rp_lines: list[str] = []
+        if resume_parsed.get("main_projects"):
+            rp_lines.append(("主要项目：" if language == "zh" else "Projects: ") + "、".join(resume_parsed["main_projects"]))
+        if resume_parsed.get("tech_stack"):
+            rp_lines.append(("技术栈：" if language == "zh" else "Tech stack: ") + "、".join(resume_parsed["tech_stack"]))
+        if resume_parsed.get("highlights"):
+            rp_lines.append(("亮点经历：" if language == "zh" else "Highlights: ") + "、".join(resume_parsed["highlights"]))
+        if resume_parsed.get("potential_weak_areas"):
+            rp_lines.append(("可能薄弱点：" if language == "zh" else "Potential gaps: ") + "、".join(resume_parsed["potential_weak_areas"]))
+        if rp_lines:
+            label = "【候选人简历摘要（请基于此设计针对性问题）】" if language == "zh" else "【Resume Summary (use to tailor questions)】"
+            context_parts.append(label + "\n" + "\n".join(rp_lines))
 
-    messages.append({"role": "user", "content": instruction})
+    if candidate_profile:
+        profile_text = profile_to_text(candidate_profile, language)
+        empty_marker = "暂无画像数据。" if language == "zh" else "No profile data yet."
+        if profile_text and profile_text != empty_marker:
+            label = "【面试过程中积累的候选人画像】" if language == "zh" else "【Candidate Profile (accumulated this session)】"
+            context_parts.append(label + "\n" + profile_text)
+
+    context_parts.append(instruction)
+    messages.append({"role": "user", "content": "\n\n".join(context_parts)})
     return messages

@@ -113,6 +113,7 @@ class InterviewSession(BaseModel):
     candidate_profile_json:  dict      = Field(default_factory=dict)
     evaluations:             list[EvaluationResult] = Field(default_factory=list)
     summary:                 Optional[SessionSummary] = None
+    resume_parsed:           dict      = Field(default_factory=dict)
     interviewer_constraints: list[str] = Field(default_factory=list)
     last_strategy_decision:  dict      = Field(default_factory=dict)
     job_analysis:            dict      = Field(default_factory=dict)
