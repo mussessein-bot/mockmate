@@ -7,3 +7,8 @@ __pycache__/
 .next/
 dist/
 build/
+
+# Eval reports (generated output, not source)
+backend/eval/reports/*.md
+backend/eval/reports/*.json
+backend/eval/reports/regression/*.json
