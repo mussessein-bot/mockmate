@@ -1,0 +1,6 @@
+﻿scenario_id,persona,job_type,overall_score,turn_count,followup_logic_score,question_relevance_score,scoring_consistency_score,feedback_actionability_score,difficulty_progression_score,conversation_flow_score
+E1,baseline,pm,4.7,8,5,5,5,5,3,5
+A1,brief_answerer,pm,3.3,8,2,5,4,1,3,5
+A3,offtopic_answerer,pm,4.5,8,4,5,5,3,5,5
+D1,vague_answerer,swe,3.0,8,2,5,2,1,3,5
+B1,baseline,swe,4.0,8,3,5,5,3,3,5
