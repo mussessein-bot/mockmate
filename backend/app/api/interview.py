@@ -11,13 +11,14 @@ from app.core.models import InterviewSession, InterviewState, Message, MessageRo
 from app.core.state_machine import (
     transition_after_answer, apply_probe, apply_question, can_probe
 )
-from app.core.memory import merge_profile_update
+from app.core.memory import build_topic_coverage_update, merge_profile_update
 from app.agents.evaluator import EvaluatorAgent
 from app.agents.strategy import StrategyAgent
 from app.agents.interviewer import InterviewerAgent
 from app.services.tts import generate_audio, generate_preview
 from app.services.stt import transcribe_audio, STTError
 from app.storage.session_store import load_session, save_session
+from app.storage.memory_store import upsert_correction_memory
 from app.core.exceptions import SessionNotFoundError
 from app.core.models import InterviewInterface
 from app.config import AUDIO_DIR
@@ -36,6 +37,39 @@ _paused: dict[str, bool] = {}
 
 def _audio_url(filename: str) -> str:
     return f"/audio/{filename}"
+
+
+def _primary_dimension(eval_result) -> str | None:
+    if not eval_result.dimension_scores:
+        return None
+    return max(eval_result.dimension_scores, key=lambda s: s.score).dimension
+
+
+def _topic_from_session(session: InterviewSession, question_text: str) -> str:
+    topic = session.last_strategy_decision.get("topic")
+    if topic:
+        return topic
+    if session.question_count <= 1:
+        return "opening_self_introduction"
+    return question_text[:120]
+
+
+def _question_type_from_session(session: InterviewSession, is_probe_question: bool) -> str:
+    if is_probe_question:
+        return "probe"
+    return session.last_strategy_decision.get("question_type", "opening")
+
+
+def _record_topic_coverage(session: InterviewSession, eval_result, question_text: str) -> None:
+    update = build_topic_coverage_update(
+        topic=_topic_from_session(session, question_text),
+        dimension=_primary_dimension(eval_result),
+        question_type=_question_type_from_session(session, eval_result.is_probe),
+        question_index=eval_result.question_index,
+        is_probe=eval_result.is_probe,
+        score=eval_result.overall_score,
+    )
+    session.candidate_profile_json = merge_profile_update(session.candidate_profile_json, update)
 
 
 async def _get_session(session_id: str) -> InterviewSession:
@@ -131,6 +165,7 @@ async def respond(session_id: str, body: RespondRequest):
         session.candidate_profile_json, profile_update
     )
     session.evaluations.append(eval_result)
+    _record_topic_coverage(session, eval_result, last_q)
 
     # Step 2: Strategy
     strategy = StrategyAgent(session)
@@ -275,6 +310,7 @@ async def respond_stream(session_id: str, body: RespondRequest):
         )
         session.candidate_profile_json = merge_profile_update(session.candidate_profile_json, profile_update)
         session.evaluations.append(eval_result)
+        _record_topic_coverage(session, eval_result, last_q)
 
         # Step 2: Strategy
         strategy = StrategyAgent(session)
@@ -409,10 +445,6 @@ async def tts_preview(body: TTSPreviewRequest):
 
 @router.post("/interview/{session_id}/correction", response_model=CorrectionResponse)
 async def correct_question(session_id: str, body: CorrectionRequest):
-    import json as _json
-    from datetime import datetime
-    from app.storage.database import get_db
-
     session = await _get_session(session_id)
 
     if session.state in (InterviewState.COMPLETED, InterviewState.INIT):
@@ -438,22 +470,20 @@ async def correct_question(session_id: str, body: CorrectionRequest):
     session.interviewer_constraints.append(constraint)
 
     # Persist to correction_log for cross-session RLHF
-    async with get_db() as db:
-        await db.execute(
-            "INSERT INTO correction_log (session_id, target_role, question_text, tags, note, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-            (
-                session_id,
-                session.profile.target_role,
-                bad_question,
-                _json.dumps(body.tags, ensure_ascii=False),
-                body.note,
-                datetime.utcnow().isoformat(),
-            ),
-        )
-        await db.commit()
+    sd = session.last_strategy_decision
+    question_type_for_log = sd.get("question_type", "opening")
+    await upsert_correction_memory(
+        session_id=session_id,
+        target_role=session.profile.target_role,
+        question_text=bad_question,
+        tags=body.tags,
+        note=body.note,
+        interview_type=session.interview_type.value,
+        persona=session.persona.value,
+        question_type=question_type_for_log,
+    )
 
     # Re-generate question using saved strategy decision (or fallback defaults)
-    sd = session.last_strategy_decision
     next_action = sd.get("next_action", "continue")
     topic = sd.get("topic", session.profile.target_role)
     question_type = sd.get("question_type", "behavioral")

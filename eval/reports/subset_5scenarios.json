@@ -1,0 +1,568 @@
+{
+  "meta": {
+    "mode": "diagnose_subset",
+    "n_sessions": 5
+  },
+  "summary": {},
+  "results": [
+    {
+      "dimensions": {
+        "followup_logic": {
+          "score": 5,
+          "should_trigger_count": 0,
+          "actual_trigger_count": 2,
+          "issues": [
+            {
+              "location": "Q1",
+              "candidate_answer_excerpt": "上线并获得同学试用反馈",
+              "expected": "系统不应追问，因为回答有具体案例且字数足够",
+              "actual": "系统追问了用户数和具体建议"
+            },
+            {
+              "location": "Q3",
+              "candidate_answer_excerpt": "我先按用户提及频次、影响交易完成度、开发成本做简单打分",
+              "expected": "系统不应追问，因为回答有具体案例且字数足够",
+              "actual": "系统追问了打分细节和量化标准"
+            }
+          ]
+        },
+        "question_relevance": {
+          "score": 5,
+          "issues": []
+        },
+        "scoring_consistency": {
+          "score": 5,
+          "needs_multi_run_verification": true,
+          "issues": []
+        },
+        "feedback_actionability": {
+          "score": 5,
+          "specific_count": 24,
+          "vague_count": 0,
+          "issues": []
+        },
+        "difficulty_progression": {
+          "score": 3,
+          "labels": [
+            "基础",
+            "进阶",
+            "进阶",
+            "进阶",
+            "深入",
+            "基础"
+          ],
+          "issues": [
+            {
+              "description": "最后一道题（Q8）为基础难度，与理想梯度（后1/3深入）不符，出现轻微倒序。"
+            }
+          ]
+        },
+        "conversation_flow": {
+          "score": 5,
+          "issues": []
+        }
+      },
+      "severity_catalog": [
+        {
+          "severity": "MED",
+          "dimension": "difficulty_progression",
+          "description": "最后一道题为基础难度，破坏了难度递增趋势",
+          "quote": "Q8: 能描述一下整个校园二手平台项目迭代结束后，最终取得了哪些量化的成果吗？",
+          "suggested_fix": "调整题目顺序，将基础题放在前面，深入题放在最后，或替换Q8为更深入的问题。"
+        },
+        {
+          "severity": "LOW",
+          "dimension": "followup_logic",
+          "description": "系统在Q1和Q3进行了不必要的追问，虽然追问内容合理，但根据追问条件不应触发",
+          "quote": "Q1追问决策：✓ 触发追问 — 回答中项目结果仅简述为‘上线并获得同学试用反馈’，缺少具体数据...",
+          "suggested_fix": "优化追问触发条件，避免对已有案例但细节不足的回答过度追问，可设置更精确的阈值（如缺少量化数据且影响评分时才追问）。"
+        }
+      ],
+      "overall_score": 4.7,
+      "scenario_id": "E1",
+      "persona": "baseline",
+      "job_type": "pm",
+      "turn_count": 8
+    },
+    {
+      "dimensions": {
+        "followup_logic": {
+          "score": 2,
+          "should_trigger_count": 8,
+          "actual_trigger_count": 2,
+          "issues": [
+            {
+              "location": "Q2",
+              "candidate_answer_excerpt": "公司不便细说。我做过类似的事，产出过调研文档和简单原型，量化结果不多。",
+              "expected": "系统应追问具体公司、项目、个人角色和量化结果，或要求举例说明",
+              "actual": "系统直接出了下一题"
+            },
+            {
+              "location": "Q4",
+              "candidate_answer_excerpt": "我做过类似的事，主要看过转化和留存变化。具体日期和结果记不清，分析深度还需要继续学习。",
+              "expected": "系统应追问具体日期、指标、分析动作，或要求给出哪怕不完美的例子",
+              "actual": "系统直接出了下一题"
+            },
+            {
+              "location": "Q5",
+              "candidate_answer_excerpt": "我接触过需求冲突场景，主要协助整理需求背景和影响范围。优先级判断更多由负责人决定。",
+              "expected": "系统应追问具体冲突案例、个人角色和采取的步骤",
+              "actual": "系统直接出了下一题"
+            },
+            {
+              "location": "Q6",
+              "candidate_answer_excerpt": "我接触过类似分歧，但没有独立推动上线。更多是协助沟通需求理解，这方面我还需要继续学习。",
+              "expected": "系统应追问具体分歧点、个人推动动作，或要求描述一次协助沟通的细节",
+              "actual": "系统直接出了下一题"
+            },
+            {
+              "location": "Q7",
+              "candidate_answer_excerpt": "我会看投诉量、影响用户和流失风险。若影响面小且价值低，先记录并做低成本优化。",
+              "expected": "系统应追问具体数据阈值、低成本优化方案举例，或要求展开思考步骤",
+              "actual": "系统直接出了下一题"
+            },
+            {
+              "location": "Q8",
+              "candidate_answer_excerpt": "我做过类似的事，主要从反馈中整理需求。确认和落地深度不足，还需要继续学习。",
+              "expected": "系统应追问具体反馈来源、确认需求的方法，或要求描述一次整理需求的经历",
+              "actual": "系统直接出了下一题"
+            }
+          ]
+        },
+        "question_relevance": {
+          "score": 5,
+          "issues": []
+        },
+        "scoring_consistency": {
+          "score": 4,
+          "needs_multi_run_verification": true,
+          "issues": [
+            {
+              "description": "Q7回答仅给出框架性思路，得分3.3略高于其他回避性回答，但整体评分与回答质量趋势一致，未出现明显倒挂。"
+            }
+          ]
+        },
+        "feedback_actionability": {
+          "score": 1,
+          "specific_count": 1,
+          "vague_count": 23,
+          "issues": [
+            {
+              "location": "Q1",
+              "vague_feedback_text": "没有具体说明如何应用这些技能，缺乏深入关联。"
+            },
+            {
+              "location": "Q2",
+              "vague_feedback_text": "完全未提供具体公司、项目、量化结果或案例，极其笼统。"
+            },
+            {
+              "location": "Q3",
+              "vague_feedback_text": "完全没有具体指标、案例或量化数据。"
+            },
+            {
+              "location": "Q4",
+              "vague_feedback_text": "完全缺乏具体日期、指标细节、分析过程和结果，极其笼统。"
+            },
+            {
+              "location": "Q5",
+              "vague_feedback_text": "没有提供任何具体案例、角色细节、操作步骤或量化数据，回答极其模糊。"
+            },
+            {
+              "location": "Q6",
+              "vague_feedback_text": "完全没有具体细节、案例或数据，无法评估个人动作。"
+            },
+            {
+              "location": "Q8",
+              "vague_feedback_text": "完全没有具体事实、数据或案例，内容空洞。"
+            }
+          ]
+        },
+        "difficulty_progression": {
+          "score": 3,
+          "labels": [
+            "基础",
+            "进阶",
+            "进阶",
+            "进阶",
+            "深入",
+            "进阶"
+          ],
+          "issues": [
+            {
+              "description": "Q7为深入情景题，但Q8又回到进阶行为题，结尾难度回落，未保持深入梯度。"
+            }
+          ]
+        },
+        "conversation_flow": {
+          "score": 5,
+          "issues": []
+        }
+      },
+      "severity_catalog": [
+        {
+          "severity": "HIGH",
+          "dimension": "followup_logic",
+          "description": "追问触发率仅25%，大量应追问的回避性回答被直接放过，导致面试无法获取有效信息。",
+          "quote": "Q2: 公司不便细说...量化结果不多。 → 未追问；Q4: 具体日期和结果记不清... → 未追问",
+          "suggested_fix": "在追问决策模块中，将‘回答字数<50字’、‘无具体案例’、‘出现回避性语言’设为强制追问条件，并增加连续追问上限，避免过早放弃。"
+        },
+        {
+          "severity": "HIGH",
+          "dimension": "feedback_actionability",
+          "description": "24条反馈中仅1条包含具体示例，其余均为空洞批评，无法指导候选人改进。",
+          "quote": "Q1反馈: 没有具体说明如何应用这些技能，缺乏深入关联。",
+          "suggested_fix": "在反馈生成prompt中要求每条批评必须附带一个具体改进示例（如‘可以这样说：在XX实习中，我通过分析XX数据，发现...’），并设置后处理检查，若反馈中无示例则重新生成。"
+        },
+        {
+          "severity": "MED",
+          "dimension": "difficulty_progression",
+          "description": "题目难度在结尾从深入回落到进阶，梯度不够理想。",
+          "quote": "Q7为深入情景题，Q8为进阶行为题",
+          "suggested_fix": "调整题库排序逻辑，确保最后1-2题保持深入难度，如将Q8替换为更复杂的综合情景题或追问深挖题。"
+        }
+      ],
+      "overall_score": 3.3,
+      "scenario_id": "A1",
+      "persona": "brief_answerer",
+      "job_type": "pm",
+      "turn_count": 8
+    },
+    {
+      "dimensions": {
+        "followup_logic": {
+          "score": 4,
+          "should_trigger_count": 3,
+          "actual_trigger_count": 2,
+          "issues": [
+            {
+              "location": "Q8",
+              "candidate_answer_excerpt": "如果重启那个APP，我会先定北极星指标：每周有效发布数和有效对话数，再拆卖家新增、发布转化、7日复发率。策略上用毕业季、社群团长和发布激励拉供给...",
+              "expected": "系统应追问具体策略的执行细节、量化目标或过往类似案例，因回答仅给出方向性概述，无具体案例支撑",
+              "actual": "系统直接进入结束语，未追问"
+            }
+          ]
+        },
+        "question_relevance": {
+          "score": 5,
+          "issues": []
+        },
+        "scoring_consistency": {
+          "score": 5,
+          "needs_multi_run_verification": true,
+          "issues": []
+        },
+        "feedback_actionability": {
+          "score": 3,
+          "specific_count": 4,
+          "vague_count": 0,
+          "issues": [
+            {
+              "location": "Q2",
+              "vague_feedback_text": "回答直接聚焦个人产品角色，完全贴合问题与岗位核心方向。结构清晰，先总述角色再分列具体工作，最后强调核心推动，逻辑连贯。具体列举了访谈、需求整理、原型绘制、发布流程、测试运营等细节，无模糊表述。"
+            },
+            {
+              "location": "Q4",
+              "vague_feedback_text": "直接回应了提问者要求的具体数字，完全切题。先说明统计方式，再给出调整前后数据，最后补充成交情况，逻辑清晰。提供了私信发起率百分比和成交单数的具体数字，虽然统计方式粗糙但数据明确。"
+            },
+            {
+              "location": "Q6",
+              "vague_feedback_text": "直接回应问题核心，准确分析停运原因及个人失误，完全切题。逻辑清晰，先总述根本原因，再展开具体失误，层次分明。提供了具体细节（冷启动、300注册、供给循环等），但对‘长期供给机制’等概念可进一步说明，略欠深度。"
+            },
+            {
+              "location": "Q7",
+              "vague_feedback_text": "回答直接针对增加卖家发布的策略，与问题高度相关。回答结构清晰：先说明活动名称，再描述核心策略，最后给出量化结果，逻辑连贯。提供了具体动作（拍照模板、标题示例、班级群招募）和量化数据（15→60多件、十几人→40人），虽未展开细节但已足够具体。"
+            }
+          ]
+        },
+        "difficulty_progression": {
+          "score": 5,
+          "labels": [
+            "基础",
+            "进阶",
+            "进阶",
+            "深入",
+            "进阶",
+            "深入"
+          ],
+          "issues": []
+        },
+        "conversation_flow": {
+          "score": 5,
+          "issues": []
+        }
+      },
+      "severity_catalog": [
+        {
+          "severity": "MED",
+          "dimension": "feedback_actionability",
+          "description": "多轮反馈仅给出正面评价，未提供任何具体改进建议，导致反馈可操作性不足，候选人无法获得明确提升方向。",
+          "quote": "Q2反馈：'回答直接聚焦个人产品角色，完全贴合问题与岗位核心方向。结构清晰...无模糊表述。'",
+          "suggested_fix": "在系统prompt中增加要求：对每轮回答必须给出至少一条具体改进建议（如'可补充XX细节'、'建议用STAR法则展开XX部分'），即使回答优秀也应指出可深挖的方向，避免纯正面评价。"
+        },
+        {
+          "severity": "LOW",
+          "dimension": "followup_logic",
+          "description": "Q8回答仅给出策略方向而无具体案例或执行细节，符合追问条件但系统未追问，错失深挖机会。",
+          "quote": "Q8回答：'策略上用毕业季、社群团长和发布激励拉供给，按宿舍区监控缺口，每周看数据淘汰低效渠道。'",
+          "suggested_fix": "优化追问规则，将'回答中无具体案例（仅有观点或方法论）'的判定阈值细化，对策略类问题要求至少包含一个具体执行案例或量化目标，否则触发追问。"
+        }
+      ],
+      "overall_score": 4.5,
+      "scenario_id": "A3",
+      "persona": "offtopic_answerer",
+      "job_type": "pm",
+      "turn_count": 8
+    },
+    {
+      "dimensions": {
+        "followup_logic": {
+          "score": 2,
+          "should_trigger_count": 7,
+          "actual_trigger_count": 2,
+          "issues": [
+            {
+              "location": "Q2",
+              "candidate_answer_excerpt": "这个项目我主导的是架构演进方向和关键取舍...结果上，系统吞吐、故障隔离、发布效率和团队协作心智都有明显提升。",
+              "expected": "系统应追问具体项目名称、量化结果（如吞吐提升百分比、故障次数变化）",
+              "actual": "系统直接出了下一题"
+            },
+            {
+              "location": "Q5",
+              "candidate_answer_excerpt": "我会先把需求颗粒度拉齐：明确核心链路是下单、支付、履约还是查询优先...",
+              "expected": "系统应追问具体数字分析（如基于1000万订单和5000 QPS的推导）",
+              "actual": "系统直接出了下一题"
+            },
+            {
+              "location": "Q6",
+              "candidate_answer_excerpt": "我会先基于日订单量、峰值流量、订单模型大小、写放大、索引开销和副本策略做容量水位估算...",
+              "expected": "系统应追问具体估算数字和选型对比",
+              "actual": "系统直接出了下一题"
+            },
+            {
+              "location": "Q7",
+              "candidate_answer_excerpt": "我会先把容量、读写比例、热点分布和淘汰语义拉齐...",
+              "expected": "系统应追问具体数值（如缓存容量、QPS、读写比例）",
+              "actual": "系统直接出了下一题"
+            },
+            {
+              "location": "Q8",
+              "candidate_answer_excerpt": "我主导的关键决策是在一个电商类项目中重构核心交易链路...落地后吞吐、延迟、发布效率和故障收敛都有明显改善。",
+              "expected": "系统应追问具体量化结果（如吞吐提升百分比、延迟降低毫秒数）",
+              "actual": "系统直接出了下一题"
+            }
+          ]
+        },
+        "question_relevance": {
+          "score": 5,
+          "issues": []
+        },
+        "scoring_consistency": {
+          "score": 2,
+          "needs_multi_run_verification": true,
+          "issues": [
+            {
+              "description": "Q1回答空洞得分2.7，而Q2、Q3、Q5、Q7、Q8同样空洞但得分在4.6-5.8之间，评分与回答质量不一致"
+            }
+          ]
+        },
+        "feedback_actionability": {
+          "score": 1,
+          "specific_count": 0,
+          "vague_count": 24,
+          "issues": [
+            {
+              "location": "Q1",
+              "vague_feedback_text": "回答几乎没有具体事实、数字或案例，所有描述均为抽象概括，无法评估真实经验。"
+            },
+            {
+              "location": "Q2",
+              "vague_feedback_text": "回答虽然提到了技术栈和决策方向，但缺乏具体项目名称、个人详细决策过程、量化结果，整体偏向抽象概括。"
+            },
+            {
+              "location": "Q3",
+              "vague_feedback_text": "回答提到了业务边界和方法论，但缺乏具体数字、服务数量和量化结果，属于笼统描述。"
+            },
+            {
+              "location": "Q4",
+              "vague_feedback_text": "能明确指出HashMap非线程安全，并列举了resize时可能出现的数据覆盖、元素丢失、不一致状态等具体问题，但没有展开描述数据冲突的具体机制或示例，细节程度中等。"
+            },
+            {
+              "location": "Q5",
+              "vague_feedback_text": "回答仅列举了抽象的需求维度，未结合具体数字或场景展开，缺乏实际案例和量化细节，具体性不足。"
+            },
+            {
+              "location": "Q6",
+              "vague_feedback_text": "完全没有给出任何具体数字、选型对比或量化估算，仅停留在方法论描述，与问题要求严重不符。"
+            },
+            {
+              "location": "Q7",
+              "vague_feedback_text": "回答完全停留在方法论层面，没有给出任何具体数值（如缓存容量、QPS、读写比例）、估算过程或选型案例，严重缺乏具体性。"
+            },
+            {
+              "location": "Q8",
+              "vague_feedback_text": "提到了具体项目背景和方案对比，但缺乏细节数据、量化结果和具体实施数字，整体仍显框架化。"
+            }
+          ]
+        },
+        "difficulty_progression": {
+          "score": 3,
+          "labels": [
+            "基础",
+            "进阶",
+            "进阶",
+            "深入",
+            "进阶",
+            "深入"
+          ],
+          "issues": [
+            {
+              "description": "Q7（设计LRU缓存）在Q6（量化估算）之后，难度有所下降，存在轻微倒序"
+            }
+          ]
+        },
+        "conversation_flow": {
+          "score": 5,
+          "issues": []
+        }
+      },
+      "severity_catalog": [
+        {
+          "severity": "HIGH",
+          "dimension": "followup_logic",
+          "description": "追问触发率仅28.6%，大量空洞回答未被追问，导致面试无法深入挖掘候选人真实能力",
+          "quote": "Q2: 候选人回答仍无具体数字，系统未追问直接进入Q3；Q5-Q8连续四轮空洞回答均未追问",
+          "suggested_fix": "在prompt中强化追问规则：当回答缺少具体数字、案例或量化结果时，必须继续追问，直到获得可验证信息或候选人明确表示无法提供。逻辑层应设置追问计数器，避免连续跳过追问。"
+        },
+        {
+          "severity": "HIGH",
+          "dimension": "scoring_consistency",
+          "description": "评分与回答质量脱节，同样空洞的回答得分差异高达3.1分，影响评估可信度",
+          "quote": "Q1空洞得分2.7，Q3空洞得分5.8，Q6空洞得分2.3，Q8空洞得分5.3",
+          "suggested_fix": "在评分prompt中增加一致性约束：要求对同类空洞回答的评分波动不超过2分，并引入锚定示例（如完全无具体内容的回答应固定在2-3分区间）。逻辑层可增加后处理校验，对异常高分进行标记。"
+        },
+        {
+          "severity": "HIGH",
+          "dimension": "feedback_actionability",
+          "description": "所有反馈均为空洞批评，未提供任何具体改进建议或示例，对候选人无实际帮助",
+          "quote": "Q1反馈：'需要更具体的表达'；Q6反馈：'完全没有给出任何具体数字'，均无示例或行动指引",
+          "suggested_fix": "在反馈生成prompt中要求每条批评必须附带一个具体改进示例（如'可以这样说：在XX项目中，我将吞吐从1000 QPS提升到3000 QPS'）。逻辑层可检测反馈中是否包含数字或示例，否则触发重新生成。"
+        },
+        {
+          "severity": "MED",
+          "dimension": "difficulty_progression",
+          "description": "Q7设计LRU缓存难度低于前序量化估算题，出现轻微倒序，可能影响面试节奏",
+          "quote": "Q6为深入量化估算，Q7为基础算法设计，难度下降",
+          "suggested_fix": "在题目编排prompt中增加难度梯度约束：确保后1/3题目难度不低于前序题目，或明确标注难度标签供动态调整。逻辑层可对题目序列进行预检查。"
+        }
+      ],
+      "overall_score": 3.0,
+      "scenario_id": "D1",
+      "persona": "vague_answerer",
+      "job_type": "swe",
+      "turn_count": 8
+    },
+    {
+      "dimensions": {
+        "followup_logic": {
+          "score": 3,
+          "should_trigger_count": 4,
+          "actual_trigger_count": 2,
+          "issues": [
+            {
+              "location": "Q6",
+              "candidate_answer_excerpt": "更细粒度分段锁我了解基本原理，但实践不多。",
+              "expected": "系统应追问分段锁的实现细节或为什么不用，以评估并发深度",
+              "actual": "系统直接出了下一题（Q7），未触发追问"
+            },
+            {
+              "location": "Q7",
+              "candidate_answer_excerpt": "若单链接占30%访问，我会加Redis集群、本地缓存、只读副本和限流降级。",
+              "expected": "系统应追问如何量化评估这些措施的效果，或要求给出具体参数",
+              "actual": "系统直接出了下一题（Q8），未触发追问"
+            }
+          ]
+        },
+        "question_relevance": {
+          "score": 5,
+          "issues": []
+        },
+        "scoring_consistency": {
+          "score": 5,
+          "needs_multi_run_verification": true,
+          "issues": []
+        },
+        "feedback_actionability": {
+          "score": 3,
+          "specific_count": 8,
+          "vague_count": 6,
+          "issues": [
+            {
+              "location": "Q1",
+              "vague_feedback_text": "提到了具体项目和技术栈，但缺乏量化数据和具体成果描述，回答较泛。"
+            },
+            {
+              "location": "Q2",
+              "vague_feedback_text": "使用了压测数据和基本指标，但缓存命中率缺乏正式监控，数据意识有基础但深度不足。"
+            },
+            {
+              "location": "Q3",
+              "vague_feedback_text": "没有引入任何量化数据（如磁盘IO次数、树高与数据量的关系），仅停留在理论对比层面，数据思维较弱。"
+            },
+            {
+              "location": "Q8",
+              "vague_feedback_text": "本题不直接涉及数据估算，但候选人在分析本质矛盾时体现了逻辑推理能力，缺乏数据量化层面的思考。"
+            }
+          ]
+        },
+        "difficulty_progression": {
+          "score": 3,
+          "labels": [
+            "基础",
+            "基础",
+            "进阶",
+            "进阶",
+            "进阶",
+            "进阶"
+          ],
+          "issues": [
+            {
+              "description": "题目难度梯度不明显，全程为基础到进阶，缺少深入层次的问题（如高并发优化、分布式一致性等），未能形成理想的基础→进阶→深入曲线。"
+            }
+          ]
+        },
+        "conversation_flow": {
+          "score": 5,
+          "issues": []
+        }
+      },
+      "severity_catalog": [
+        {
+          "severity": "MED",
+          "dimension": "followup_logic",
+          "description": "Q6和Q7应追问但未追问，导致对候选人深度挖掘不足，影响评估有效性。",
+          "quote": "Q6: '更细粒度分段锁我了解基本原理，但实践不多。' Q7: '若单链接占30%访问，我会加Redis集群、本地缓存、只读副本和限流降级。'",
+          "suggested_fix": "在追问决策prompt中强化对回避性语言（如'了解基本原理'、'实践不多'）和定性方案的识别，要求当回答缺乏量化或具体实现时自动触发追问。"
+        },
+        {
+          "severity": "MED",
+          "dimension": "feedback_actionability",
+          "description": "多条反馈空洞，仅指出不足但未提供具体可操作的改进建议，降低了反馈的指导价值。",
+          "quote": "Q1: '提到了具体项目和技术栈，但缺乏量化数据和具体成果描述，回答较泛。'",
+          "suggested_fix": "优化反馈生成prompt，要求每条改进建议必须包含至少一个具体例子（如'可以补充类似「接口响应时间从200ms降至50ms」的量化成果'）或可量化目标。"
+        },
+        {
+          "severity": "MED",
+          "dimension": "difficulty_progression",
+          "description": "题目难度梯度不明显，缺少深入层次的问题，未能充分考察候选人在高压场景下的能力。",
+          "quote": "全程基础到进阶，没有深入考察。",
+          "suggested_fix": "在题库设计或选题逻辑中，确保后1/3题目为深入层次，例如系统设计中的高并发优化、分布式一致性、故障恢复等，以形成合理梯度。"
+        }
+      ],
+      "overall_score": 4.0,
+      "scenario_id": "B1",
+      "persona": "baseline",
+      "job_type": "swe",
+      "turn_count": 8
+    }
+  ]
+}

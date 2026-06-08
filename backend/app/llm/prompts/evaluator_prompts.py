@@ -26,7 +26,14 @@ EVALUATOR_SYSTEM_ZH = """你是一位专业的面试评估专家。请严格按�
     "strengths_observed": [],
     "weak_areas": [],
     "topics_covered": [],
-    "keywords_to_probe": []
+    "keywords_to_probe": [],
+    "projects": [{"name": "project name", "role": "candidate role", "tech_stack": [], "evidence": [{"source": "answer", "text": "short quote or fact", "question_index": null}]}],
+    "skill_confidence": [{"name": "skill", "confidence": 0.7, "evidence": [{"source": "answer", "text": "short quote or fact", "question_index": null}], "verified": false}],
+    "evidence_snippets": [{"source": "answer", "text": "short quote or fact", "question_index": null}],
+    "verified_abilities": [{"name": "ability demonstrated", "evidence": [{"source": "answer", "text": "short quote or fact", "question_index": null}]}],
+    "unverified_abilities": [{"name": "claim needing verification", "evidence": [{"source": "answer", "text": "short quote or fact", "question_index": null}]}],
+    "interviewer_hypotheses": [{"hypothesis": "assumption to verify later", "evidence": [{"source": "answer", "text": "short quote or fact", "question_index": null}], "status": "open"}],
+    "topic_coverage": [{"topic": "covered topic", "dimension": "dimension_key", "question_type": "behavioral", "question_index": null, "is_probe": false, "score": 7.5}]
   }
 }
 
@@ -84,7 +91,14 @@ After completing the reasoning, output the evaluation JSON (JSON must be the las
     "strengths_observed": [],
     "weak_areas": [],
     "topics_covered": [],
-    "keywords_to_probe": []
+    "keywords_to_probe": [],
+    "projects": [{"name": "project name", "role": "candidate role", "tech_stack": [], "evidence": [{"source": "answer", "text": "short quote or fact", "question_index": null}]}],
+    "skill_confidence": [{"name": "skill", "confidence": 0.7, "evidence": [{"source": "answer", "text": "short quote or fact", "question_index": null}], "verified": false}],
+    "evidence_snippets": [{"source": "answer", "text": "short quote or fact", "question_index": null}],
+    "verified_abilities": [{"name": "ability demonstrated", "evidence": [{"source": "answer", "text": "short quote or fact", "question_index": null}]}],
+    "unverified_abilities": [{"name": "claim needing verification", "evidence": [{"source": "answer", "text": "short quote or fact", "question_index": null}]}],
+    "interviewer_hypotheses": [{"hypothesis": "assumption to verify later", "evidence": [{"source": "answer", "text": "short quote or fact", "question_index": null}], "status": "open"}],
+    "topic_coverage": [{"topic": "covered topic", "dimension": "dimension_key", "question_type": "behavioral", "question_index": null, "is_probe": false, "score": 7.5}]
   }
 }
 

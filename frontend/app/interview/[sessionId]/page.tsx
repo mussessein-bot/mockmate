@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { api, audioUrl } from "@/lib/api";
-import type { InterviewInterface, InterviewState, RespondResponse } from "@/lib/types";
+import type { InterviewInterface, InterviewState, MemorySnapshotResponse, RespondResponse } from "@/lib/types";
 
 type UIState = "loading" | "ai_speaking" | "ai_thinking" | "waiting" | "recording" | "transcribing" | "paused" | "review";
 
@@ -63,6 +63,7 @@ export default function InterviewRoomPage() {
   const [audioPlayFailed, setAudioPlayFailed] = useState(false);
   const [emptyTranscriptAlert, setEmptyTranscriptAlert] = useState(false);
   const [reviewTranscript, setReviewTranscript] = useState("");
+  const [memorySnapshot, setMemorySnapshot] = useState<MemorySnapshotResponse | null>(null);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const reviewBlobUrlRef = useRef<string | null>(null);
@@ -99,6 +100,15 @@ export default function InterviewRoomPage() {
       setTimeout(tick, DELAY);
     });
   }
+
+  const refreshMemory = useCallback(async () => {
+    try {
+      const snapshot = await api.getMemorySnapshot(sessionId);
+      setMemorySnapshot(snapshot);
+    } catch (e) {
+      console.error(e);
+    }
+  }, [sessionId]);
 
   function playAudio(url: string, onEnd?: () => void) {
     if (audioRef.current) {
@@ -177,6 +187,7 @@ export default function InterviewRoomPage() {
                 text: accumulated,
                 isProbe: isProbeVal,
               }]);
+              refreshMemory();
               if (shouldEnd) {
                 await api.finalize(sessionId);
                 router.push(`/feedback/${sessionId}`);
@@ -203,6 +214,7 @@ export default function InterviewRoomPage() {
       setInterviewState(res.state);
       setQuestionCount(res.question_count);
       setIsProbe(res.is_probe);
+      refreshMemory();
 
       const addInterviewerMsg = () => {
         setMessages(prev => [...prev, {
@@ -234,7 +246,7 @@ export default function InterviewRoomPage() {
       console.error(e);
       setUiState("waiting");
     }
-  }, [sessionId, router, interviewInterface]);
+  }, [sessionId, router, interviewInterface, refreshMemory]);
 
   // Load session info on mount
   useEffect(() => {
@@ -246,6 +258,7 @@ export default function InterviewRoomPage() {
         if (cancelled) return;
         setPersona(session.persona);
         setInterviewInterface(session.interview_interface ?? "voice");
+        refreshMemory();
         setUiState("loading");
       } catch (e) {
         if (!cancelled) console.error(e);
@@ -265,6 +278,7 @@ export default function InterviewRoomPage() {
       const start = await api.startInterview(sessionId);
       setInterviewState(start.state);
       setQuestionCount(start.question_count);
+      refreshMemory();
       if (start.audio_url) {
         // Voice mode
         setSubtitle(start.interviewer_text);
@@ -520,6 +534,27 @@ export default function InterviewRoomPage() {
           <span className="text-[#374151] font-medium">技术</span>
         </div>
       </div>
+
+      {memorySnapshot && (
+        <div className="px-6 py-2 bg-[#F9FAFB] border-b border-[#E5E7EB] flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-[#6B7280] flex-shrink-0">
+          <span className="font-medium text-[#374151]">Memory</span>
+          <span>Covered {memorySnapshot.topic_coverage.length}</span>
+          <span>Probes {memorySnapshot.probe_count}/{memorySnapshot.max_probes}</span>
+          {memorySnapshot.active_dimensions.length > 0 && (
+            <span>Focus {memorySnapshot.active_dimensions.slice(0, 3).join(", ")}</span>
+          )}
+          {memorySnapshot.topic_labels.length > 0 && (
+            <span className="truncate max-w-full">
+              Recent {memorySnapshot.topic_labels.slice(-3).join(" | ")}
+            </span>
+          )}
+          {memorySnapshot.last_probe_reason && (
+            <span className="text-[#D97706] truncate max-w-full">
+              Probe {memorySnapshot.last_probe_reason}
+            </span>
+          )}
+        </div>
+      )}
 
       {!ready ? (
         <div className="flex-1 flex flex-col items-center justify-center px-6">

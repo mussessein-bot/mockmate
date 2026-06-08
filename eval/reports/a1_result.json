@@ -1,0 +1,143 @@
+{
+  "dimensions": {
+    "followup_logic": {
+      "score": 2,
+      "should_trigger_count": 8,
+      "actual_trigger_count": 2,
+      "issues": [
+        {
+          "location": "Q2",
+          "candidate_answer_excerpt": "公司不便细说。我做过类似的事，产出过调研文档和简单原型，量化结果不多。",
+          "expected": "系统应追问具体公司、项目、个人角色和量化结果，或要求举例说明",
+          "actual": "系统直接出了下一题"
+        },
+        {
+          "location": "Q4",
+          "candidate_answer_excerpt": "我做过类似的事，主要看过转化和留存变化。具体日期和结果记不清，分析深度还需要继续学习。",
+          "expected": "系统应追问具体日期、指标、分析动作，或要求给出哪怕不完美的例子",
+          "actual": "系统直接出了下一题"
+        },
+        {
+          "location": "Q5",
+          "candidate_answer_excerpt": "我接触过需求冲突场景，主要协助整理需求背景和影响范围。优先级判断更多由负责人决定。",
+          "expected": "系统应追问具体冲突案例、个人角色和采取的步骤",
+          "actual": "系统直接出了下一题"
+        },
+        {
+          "location": "Q6",
+          "candidate_answer_excerpt": "我接触过类似分歧，但没有独立推动上线。更多是协助沟通需求理解，这方面我还需要继续学习。",
+          "expected": "系统应追问具体分歧点、个人推动动作，或要求描述一次协助沟通的细节",
+          "actual": "系统直接出了下一题"
+        },
+        {
+          "location": "Q7",
+          "candidate_answer_excerpt": "我会看投诉量、影响用户和流失风险。若影响面小且价值低，先记录并做低成本优化。",
+          "expected": "系统应追问具体数据阈值、低成本优化方案举例，或要求展开思考步骤",
+          "actual": "系统直接出了下一题"
+        },
+        {
+          "location": "Q8",
+          "candidate_answer_excerpt": "我做过类似的事，主要从反馈中整理需求。确认和落地深度不足，还需要继续学习。",
+          "expected": "系统应追问具体反馈来源、确认需求的方法，或要求描述一次整理需求的经历",
+          "actual": "系统直接出了下一题"
+        }
+      ]
+    },
+    "question_relevance": {
+      "score": 5,
+      "issues": []
+    },
+    "scoring_consistency": {
+      "score": 4,
+      "needs_multi_run_verification": true,
+      "issues": [
+        {
+          "description": "Q7回答仅给出框架性思路，得分3.3略高于其他回避性回答，但整体评分与回答质量趋势一致，未出现明显倒挂。"
+        }
+      ]
+    },
+    "feedback_actionability": {
+      "score": 1,
+      "specific_count": 1,
+      "vague_count": 23,
+      "issues": [
+        {
+          "location": "Q1",
+          "vague_feedback_text": "没有具体说明如何应用这些技能，缺乏深入关联。"
+        },
+        {
+          "location": "Q2",
+          "vague_feedback_text": "完全未提供具体公司、项目、量化结果或案例，极其笼统。"
+        },
+        {
+          "location": "Q3",
+          "vague_feedback_text": "完全没有具体指标、案例或量化数据。"
+        },
+        {
+          "location": "Q4",
+          "vague_feedback_text": "完全缺乏具体日期、指标细节、分析过程和结果，极其笼统。"
+        },
+        {
+          "location": "Q5",
+          "vague_feedback_text": "没有提供任何具体案例、角色细节、操作步骤或量化数据，回答极其模糊。"
+        },
+        {
+          "location": "Q6",
+          "vague_feedback_text": "完全没有具体细节、案例或数据，无法评估个人动作。"
+        },
+        {
+          "location": "Q8",
+          "vague_feedback_text": "完全没有具体事实、数据或案例，内容空洞。"
+        }
+      ]
+    },
+    "difficulty_progression": {
+      "score": 3,
+      "labels": [
+        "基础",
+        "进阶",
+        "进阶",
+        "进阶",
+        "深入",
+        "进阶"
+      ],
+      "issues": [
+        {
+          "description": "Q7为深入情景题，但Q8又回到进阶行为题，结尾难度回落，未保持深入梯度。"
+        }
+      ]
+    },
+    "conversation_flow": {
+      "score": 5,
+      "issues": []
+    }
+  },
+  "severity_catalog": [
+    {
+      "severity": "HIGH",
+      "dimension": "followup_logic",
+      "description": "追问触发率仅25%，大量应追问的回避性回答被直接放过，导致面试无法获取有效信息。",
+      "quote": "Q2: 公司不便细说...量化结果不多。 → 未追问；Q4: 具体日期和结果记不清... → 未追问",
+      "suggested_fix": "在追问决策模块中，将‘回答字数<50字’、‘无具体案例’、‘出现回避性语言’设为强制追问条件，并增加连续追问上限，避免过早放弃。"
+    },
+    {
+      "severity": "HIGH",
+      "dimension": "feedback_actionability",
+      "description": "24条反馈中仅1条包含具体示例，其余均为空洞批评，无法指导候选人改进。",
+      "quote": "Q1反馈: 没有具体说明如何应用这些技能，缺乏深入关联。",
+      "suggested_fix": "在反馈生成prompt中要求每条批评必须附带一个具体改进示例（如‘可以这样说：在XX实习中，我通过分析XX数据，发现...’），并设置后处理检查，若反馈中无示例则重新生成。"
+    },
+    {
+      "severity": "MED",
+      "dimension": "difficulty_progression",
+      "description": "题目难度在结尾从深入回落到进阶，梯度不够理想。",
+      "quote": "Q7为深入情景题，Q8为进阶行为题",
+      "suggested_fix": "调整题库排序逻辑，确保最后1-2题保持深入难度，如将Q8替换为更复杂的综合情景题或追问深挖题。"
+    }
+  ],
+  "overall_score": 3.3,
+  "scenario_id": "A1",
+  "persona": "brief_answerer",
+  "job_type": "pm",
+  "turn_count": 8
+}

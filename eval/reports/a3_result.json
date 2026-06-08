@@ -1,0 +1,86 @@
+{
+  "dimensions": {
+    "followup_logic": {
+      "score": 4,
+      "should_trigger_count": 3,
+      "actual_trigger_count": 2,
+      "issues": [
+        {
+          "location": "Q8",
+          "candidate_answer_excerpt": "如果重启那个APP，我会先定北极星指标：每周有效发布数和有效对话数，再拆卖家新增、发布转化、7日复发率。策略上用毕业季、社群团长和发布激励拉供给...",
+          "expected": "系统应追问具体策略的执行细节、量化目标或过往类似案例，因回答仅给出方向性概述，无具体案例支撑",
+          "actual": "系统直接进入结束语，未追问"
+        }
+      ]
+    },
+    "question_relevance": {
+      "score": 5,
+      "issues": []
+    },
+    "scoring_consistency": {
+      "score": 5,
+      "needs_multi_run_verification": true,
+      "issues": []
+    },
+    "feedback_actionability": {
+      "score": 3,
+      "specific_count": 4,
+      "vague_count": 0,
+      "issues": [
+        {
+          "location": "Q2",
+          "vague_feedback_text": "回答直接聚焦个人产品角色，完全贴合问题与岗位核心方向。结构清晰，先总述角色再分列具体工作，最后强调核心推动，逻辑连贯。具体列举了访谈、需求整理、原型绘制、发布流程、测试运营等细节，无模糊表述。"
+        },
+        {
+          "location": "Q4",
+          "vague_feedback_text": "直接回应了提问者要求的具体数字，完全切题。先说明统计方式，再给出调整前后数据，最后补充成交情况，逻辑清晰。提供了私信发起率百分比和成交单数的具体数字，虽然统计方式粗糙但数据明确。"
+        },
+        {
+          "location": "Q6",
+          "vague_feedback_text": "直接回应问题核心，准确分析停运原因及个人失误，完全切题。逻辑清晰，先总述根本原因，再展开具体失误，层次分明。提供了具体细节（冷启动、300注册、供给循环等），但对‘长期供给机制’等概念可进一步说明，略欠深度。"
+        },
+        {
+          "location": "Q7",
+          "vague_feedback_text": "回答直接针对增加卖家发布的策略，与问题高度相关。回答结构清晰：先说明活动名称，再描述核心策略，最后给出量化结果，逻辑连贯。提供了具体动作（拍照模板、标题示例、班级群招募）和量化数据（15→60多件、十几人→40人），虽未展开细节但已足够具体。"
+        }
+      ]
+    },
+    "difficulty_progression": {
+      "score": 5,
+      "labels": [
+        "基础",
+        "进阶",
+        "进阶",
+        "深入",
+        "进阶",
+        "深入"
+      ],
+      "issues": []
+    },
+    "conversation_flow": {
+      "score": 5,
+      "issues": []
+    }
+  },
+  "severity_catalog": [
+    {
+      "severity": "MED",
+      "dimension": "feedback_actionability",
+      "description": "多轮反馈仅给出正面评价，未提供任何具体改进建议，导致反馈可操作性不足，候选人无法获得明确提升方向。",
+      "quote": "Q2反馈：'回答直接聚焦个人产品角色，完全贴合问题与岗位核心方向。结构清晰...无模糊表述。'",
+      "suggested_fix": "在系统prompt中增加要求：对每轮回答必须给出至少一条具体改进建议（如'可补充XX细节'、'建议用STAR法则展开XX部分'），即使回答优秀也应指出可深挖的方向，避免纯正面评价。"
+    },
+    {
+      "severity": "LOW",
+      "dimension": "followup_logic",
+      "description": "Q8回答仅给出策略方向而无具体案例或执行细节，符合追问条件但系统未追问，错失深挖机会。",
+      "quote": "Q8回答：'策略上用毕业季、社群团长和发布激励拉供给，按宿舍区监控缺口，每周看数据淘汰低效渠道。'",
+      "suggested_fix": "优化追问规则，将'回答中无具体案例（仅有观点或方法论）'的判定阈值细化，对策略类问题要求至少包含一个具体执行案例或量化目标，否则触发追问。"
+    }
+  ],
+  "overall_score": 4.5,
+  "scenario_id": "A3",
+  "persona": "offtopic_answerer",
+  "job_type": "pm",
+  "turn_count": 8
+}

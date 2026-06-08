@@ -1,6 +1,6 @@
 from app.agents.base import BaseAgent
 from app.core.models import InterviewSession, InterviewMode
-from app.core.memory import profile_to_text
+from app.core.memory import profile_to_text, topic_coverage_labels
 from app.core.state_machine import can_probe
 from app.llm.client import chat_completion_json
 from app.llm.prompts.strategy_prompts import build_strategy_prompt
@@ -20,7 +20,7 @@ class StrategyAgent(BaseAgent):
         profile_text = profile_to_text(self.session.candidate_profile_json, self.language)
         probe_allowed = can_probe(self.session)
 
-        topics_covered = self.session.candidate_profile_json.get("topics_covered", [])
+        topics_covered = topic_coverage_labels(self.session.candidate_profile_json)
         recent_non_probe = [e for e in self.session.evaluations if not e.is_probe]
         recent_scores = [e.overall_score for e in recent_non_probe[-3:]]
 
