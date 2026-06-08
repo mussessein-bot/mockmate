@@ -87,6 +87,22 @@ Rule 5: topic must be specific, giving the interviewer clear direction
   → Bad: "leadership", "communication skills" (too abstract)"""
 
 
+STRATEGY_SYSTEM_ZH += """
+
+## Memory Use Rules
+- Treat covered topics as structured memory. Do not choose a next topic with the same topic + dimension + question_type combination.
+- If a topic was already probed, do not probe it again unless the latest answer introduced a clear contradiction.
+- Prefer uncovered active dimensions. If all active dimensions have been covered, prefer the lowest recent score.
+- When selecting a topic, explain in reasoning which memory gap it addresses."""
+STRATEGY_SYSTEM_EN += """
+
+## Memory Use Rules
+- Treat covered topics as structured memory. Do not choose a next topic with the same topic + dimension + question_type combination.
+- If a topic was already probed, do not probe it again unless the latest answer introduced a clear contradiction.
+- Prefer uncovered active dimensions. If all active dimensions have been covered, prefer the lowest recent score.
+- When selecting a topic, explain in reasoning which memory gap it addresses."""
+
+
 def _phase_instruction_zh(question_count: int, max_questions: int, interview_type: str = "behavioral") -> str:
     if interview_type == "technical":
         if question_count <= 2:

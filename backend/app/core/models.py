@@ -78,6 +78,47 @@ class SentenceAnnotation(BaseModel):
     comment: str
 
 
+class MemoryEvidence(BaseModel):
+    """A short source-backed observation saved in candidate memory."""
+    source: str = "answer"
+    text: str
+    question_index: Optional[int] = None
+
+
+class SkillMemory(BaseModel):
+    name: str
+    confidence: float = 0.5
+    evidence: list[MemoryEvidence] = Field(default_factory=list)
+    verified: bool = False
+
+
+class ProjectMemory(BaseModel):
+    name: str
+    role: Optional[str] = None
+    tech_stack: list[str] = Field(default_factory=list)
+    evidence: list[MemoryEvidence] = Field(default_factory=list)
+
+
+class AbilityMemory(BaseModel):
+    name: str
+    evidence: list[MemoryEvidence] = Field(default_factory=list)
+
+
+class InterviewerHypothesis(BaseModel):
+    hypothesis: str
+    evidence: list[MemoryEvidence] = Field(default_factory=list)
+    status: str = "open"  # open | confirmed | rejected
+
+
+class TopicCoverageEntry(BaseModel):
+    topic: str
+    dimension: Optional[str] = None
+    question_type: Optional[str] = None
+    question_index: Optional[int] = None
+    is_probe: bool = False
+    score: Optional[float] = None
+
+
 class EvaluationResult(BaseModel):
     model_config = {"protected_namespaces": ()}
 

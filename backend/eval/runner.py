@@ -121,19 +121,21 @@ async def run_session(scenario: dict) -> SessionTranscript:
 
     last_question = opening_text
     turn_index = 1
+    candidate_history: list[dict] = []  # track Q&A history for candidate memory
 
     # ── Main loop — mirrors interview.py respond() exactly ───────────────────
     while session.state not in (InterviewState.COMPLETED, InterviewState.CLOSING):
         is_probe_q = session.state == InterviewState.DEEP_DIVE
 
-        # Generate candidate answer
+        # Generate candidate answer (with conversation history for consistency)
         if inject_short_at and turn_index == inject_short_at:
             candidate_answer = "我了解基本原理，但实践不多。"
         else:
             msgs = build_candidate_messages(
-                scenario["persona"], scenario["target_role"], last_question
+                scenario["persona"], scenario["target_role"], last_question,
+                history=candidate_history,
             )
-            candidate_answer = candidate_chat(msgs)
+            candidate_answer = await candidate_chat(msgs)
 
         _add_message(session, MessageRole.CANDIDATE, candidate_answer)
 
@@ -158,6 +160,12 @@ async def run_session(scenario: dict) -> SessionTranscript:
             state_label=session.state.value,
             eval_result=eval_result,
         ))
+
+        # Update candidate history so next turn can see previous answers
+        candidate_history.append({
+            "question": last_question,
+            "answer": candidate_answer,
+        })
 
         # Step 2: Strategy
         strategy = StrategyAgent(session)

@@ -1,6 +1,5 @@
 import json
 from typing import AsyncGenerator
-import httpx
 from openai import AsyncOpenAI
 from app.config import ARK_API_KEY, ARK_BASE_URL, ARK_MODEL
 from app.core.exceptions import LLMError
@@ -12,11 +11,9 @@ _client: AsyncOpenAI | None = None
 def get_client() -> AsyncOpenAI:
     global _client
     if _client is None:
-        # Bypass system proxy — ARK API is a domestic CN service that fails through overseas proxies
         _client = AsyncOpenAI(
             api_key=ARK_API_KEY,
             base_url=ARK_BASE_URL,
-            http_client=httpx.AsyncClient(trust_env=False),
         )
     return _client
 

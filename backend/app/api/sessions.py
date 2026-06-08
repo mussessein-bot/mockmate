@@ -4,12 +4,14 @@ from app.api.schemas import (
     CreateSessionRequest, CreateSessionResponse,
     AnalyzeRoleRequest, RefineAnalysisRequest, WebSearchAnalyzeRequest,
     JobAnalysisResponse, WebSearchAnalyzeResponse, ExtractedQuestion,
+    MemorySnapshotResponse,
 )
 from app.core.models import InterviewSession, CandidateProfile
 from app.core.dimensions import DEFAULT_DIMENSIONS
-from app.core.memory import init_profile
+from app.core.memory import init_profile, normalize_profile, topic_coverage_labels
 from app.storage.session_store import save_session, load_session, delete_session
 from app.storage.database import get_db
+from app.storage.memory_store import job_cache_key, load_job_knowledge, save_job_knowledge
 from app.core.exceptions import SessionNotFoundError
 from app.llm.client import chat_completion_json
 from app.llm.prompts.analysis_prompts import build_analysis_prompt, build_extraction_prompt
@@ -70,6 +72,54 @@ async def create_session(body: CreateSessionRequest):
             f"历史用户对「{body.target_role}」岗位面试的反馈：请避免出现以下类型的问题：{summary}"
         )
 
+    async with get_db() as db:
+        cursor = await db.execute(
+            """
+            SELECT tags, interview_type, persona, question_type, hit_count
+            FROM correction_log
+            WHERE target_role = ?
+              AND (interview_type IS NULL OR interview_type = ?)
+              AND (expires_at IS NULL OR expires_at > datetime('now'))
+            ORDER BY created_at DESC
+            LIMIT 20
+            """,
+            (body.target_role, body.interview_type.value),
+        )
+        structured_rows = await cursor.fetchall()
+    if structured_rows:
+        tag_counts: dict[str, int] = {}
+        question_type_counts: dict[str, int] = {}
+        persona_counts: dict[str, int] = {}
+        for row in structured_rows:
+            weight = int(row["hit_count"] or 1)
+            try:
+                tags = json.loads(row["tags"])
+            except Exception:
+                tags = []
+            for tag in tags:
+                tag_counts[tag] = tag_counts.get(tag, 0) + weight
+            if row["question_type"]:
+                question_type_counts[row["question_type"]] = question_type_counts.get(row["question_type"], 0) + weight
+            if row["persona"]:
+                persona_counts[row["persona"]] = persona_counts.get(row["persona"], 0) + weight
+
+        details = [f"tags: {'; '.join(f'{tag}({cnt}x)' for tag, cnt in tag_counts.items())}"]
+        if question_type_counts:
+            details.append(
+                "question types: "
+                + "; ".join(f"{qt}({cnt}x)" for qt, cnt in question_type_counts.items())
+            )
+        if persona_counts:
+            details.append(
+                "personas: "
+                + "; ".join(f"{persona}({cnt}x)" for persona, cnt in persona_counts.items())
+            )
+        historical_constraints.append(
+            f"Structured correction memory for target role '{body.target_role}' "
+            f"and interview type '{body.interview_type.value}'. Avoid similar questions. "
+            + " | ".join(details)
+        )
+
     resume_parsed = await _parse_resume(body.resume_text) if body.resume_text else {}
 
     session = InterviewSession(
@@ -101,6 +151,34 @@ async def get_session(session_id: str):
         return session.model_dump()
     except SessionNotFoundError:
         raise HTTPException(status_code=404, detail="Session not found")
+
+
+@router.get("/sessions/{session_id}/memory", response_model=MemorySnapshotResponse)
+async def get_session_memory(session_id: str):
+    try:
+        session = await load_session(session_id)
+    except SessionNotFoundError:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    profile = normalize_profile(session.candidate_profile_json)
+    last_probe_reason = None
+    for evaluation in reversed(session.evaluations):
+        if evaluation.probe_reason:
+            last_probe_reason = evaluation.probe_reason
+            break
+
+    return MemorySnapshotResponse(
+        candidate_profile=profile,
+        topic_coverage=profile.get("topic_coverage", []),
+        topic_labels=topic_coverage_labels(profile),
+        skills_mentioned=profile.get("skills_mentioned", []),
+        projects=profile.get("projects", []),
+        interviewer_constraints=session.interviewer_constraints,
+        active_dimensions=session.active_dimensions,
+        probe_count=session.probe_count,
+        max_probes=2,
+        last_probe_reason=last_probe_reason,
+    )
 
 
 @router.delete("/sessions/{session_id}")
@@ -170,6 +248,27 @@ async def web_search_analyze(body: WebSearchAnalyzeRequest):
         parts = [body.target_school or "", body.target_department or ""]
         effective_company = " ".join(p for p in parts if p) or body.target_company
 
+    cache_key = job_cache_key(
+        interview_type=body.interview_type,
+        target_role=effective_role,
+        target_company=effective_company,
+        target_school=body.target_school,
+        target_department=body.target_department,
+        target_advisor=body.target_advisor,
+        research_direction=body.research_direction,
+    )
+    cached = await load_job_knowledge(cache_key)
+    if cached:
+        cached_questions = [
+            ExtractedQuestion(**q) for q in cached.get("extracted_questions", [])
+            if q.get("question")
+        ]
+        return WebSearchAnalyzeResponse(
+            **cached["analysis"],
+            extracted_questions=cached_questions,
+            search_available=bool(cached.get("search_text")),
+        )
+
     search_text = await search_interview_info(
         interview_type=body.interview_type,
         target_role=effective_role,
@@ -211,6 +310,20 @@ async def web_search_analyze(body: WebSearchAnalyzeRequest):
     )
     raw = await chat_completion_json(messages, temperature=0.3)
     analysis = _parse_analysis(raw)
+
+    await save_job_knowledge(
+        cache_key=cache_key,
+        interview_type=body.interview_type,
+        target_role=effective_role,
+        target_company=effective_company,
+        target_school=body.target_school,
+        target_department=body.target_department,
+        target_advisor=body.target_advisor,
+        research_direction=body.research_direction,
+        search_text=search_text,
+        extracted_questions=[q.model_dump() for q in extracted],
+        analysis=analysis,
+    )
 
     return WebSearchAnalyzeResponse(
         **analysis,

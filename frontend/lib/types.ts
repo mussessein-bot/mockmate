@@ -125,6 +125,19 @@ export interface CorrectionResponse {
   question_count: number;
 }
 
+export interface MemorySnapshotResponse {
+  candidate_profile: Record<string, unknown>;
+  topic_coverage: Array<Record<string, unknown>>;
+  topic_labels: string[];
+  skills_mentioned: string[];
+  projects: Array<Record<string, unknown>>;
+  interviewer_constraints: string[];
+  active_dimensions: string[];
+  probe_count: number;
+  max_probes: number;
+  last_probe_reason: string | null;
+}
+
 // localStorage history record
 export interface HistoryRecord {
   session_id: string;

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import asyncio
 from datetime import datetime
 from pathlib import Path
 
@@ -104,7 +103,7 @@ async def run_regression(cases: list[dict]) -> list[dict]:
         # Re-use transcript if we already ran this scenario this session
         if sid not in seen_scenarios:
             transcript = await run_session(scenario)
-            judge_result = evaluate_transcript(transcript, scenario)
+            judge_result = await evaluate_transcript(transcript, scenario)
             seen_scenarios[sid] = (transcript, judge_result)
         else:
             _, judge_result = seen_scenarios[sid]

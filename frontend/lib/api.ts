@@ -7,6 +7,7 @@ import type {
   CorrectionResponse,
   JobAnalysisResponse,
   WebSearchAnalyzeResponse,
+  MemorySnapshotResponse,
 } from "./types";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -26,6 +27,9 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   getSession: (sessionId: string) =>
     apiFetch<{ persona: string; interview_interface: InterviewInterface }>(`/api/sessions/${sessionId}`),
+
+  getMemorySnapshot: (sessionId: string) =>
+    apiFetch<MemorySnapshotResponse>(`/api/sessions/${sessionId}/memory`),
 
   createSession: (payload: CreateSessionPayload) =>
     apiFetch<{

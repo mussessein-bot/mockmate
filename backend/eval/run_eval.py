@@ -56,7 +56,7 @@ async def _run_scenarios(scenarios: list[dict], git: str, verbose: bool = False)
         _print_progress(i - 1, total, label)
         try:
             transcript = await run_session(scenario)
-            judge_result = evaluate_transcript(transcript, scenario)
+            judge_result = await evaluate_transcript(transcript, scenario)
             results.append(judge_result)
 
             # Auto-save HIGH issues as regression cases

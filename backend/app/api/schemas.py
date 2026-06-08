@@ -139,3 +139,16 @@ class CorrectionResponse(BaseModel):
     new_question: str
     audio_url:    str
     question_count: int
+
+
+class MemorySnapshotResponse(BaseModel):
+    candidate_profile:      dict
+    topic_coverage:         list[dict]
+    topic_labels:           list[str]
+    skills_mentioned:       list[str]
+    projects:               list[dict]
+    interviewer_constraints: list[str]
+    active_dimensions:      list[str]
+    probe_count:            int
+    max_probes:             int = 2
+    last_probe_reason:      Optional[str] = None
