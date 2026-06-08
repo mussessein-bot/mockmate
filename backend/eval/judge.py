@@ -1,19 +1,23 @@
 from __future__ import annotations
 
+import logging
+
 import eval  # noqa: F401
 from eval.client import judge_chat
 from eval.prompts import build_judge_messages
 from eval.runner import SessionTranscript
 
+logger = logging.getLogger(__name__)
 
-def evaluate_transcript(transcript: SessionTranscript, scenario: dict) -> dict:
+
+async def evaluate_transcript(transcript: SessionTranscript, scenario: dict) -> dict:
     """
-    Call the Judge LLM on a completed transcript.
+    Call the Judge LLM on a completed transcript (async).
     Returns the parsed judge result dict with dimensions + severity_catalog.
     """
     transcript_text = transcript.as_text()
     messages = build_judge_messages(transcript_text, scenario)
-    result = judge_chat(messages)
+    result = await judge_chat(messages)
 
     # Attach metadata for reporting
     result["scenario_id"] = transcript.scenario_id
@@ -36,6 +40,9 @@ def passes_key_assertion(judge_result: dict, scenario: dict) -> bool:
     Evaluate the scenario's key_assertion string against judge_result.
     Supports simple dot-path comparisons like "followup_logic.score >= 3"
     and "overall_score >= 3.0".
+
+    Returns False on parse failure (fail-closed: suspicious results surface
+    immediately rather than being silently accepted).
     """
     assertion = scenario.get("key_assertion", "")
     if not assertion:
@@ -44,25 +51,27 @@ def passes_key_assertion(judge_result: dict, scenario: dict) -> bool:
         # Parse "path op value"
         parts = assertion.split()
         if len(parts) != 3:
-            return True
+            logger.warning("Invalid assertion format: %r", assertion)
+            return False
         path, op, raw_val = parts
         val = float(raw_val)
 
         keys = path.split(".")
         node = judge_result
-        if keys[0] == "dimensions":
-            keys = keys  # already rooted correctly
-        else:
-            # e.g. "followup_logic.score" → look inside dimensions
-            if keys[0] in judge_result.get("dimensions", {}):
-                node = judge_result["dimensions"]
-            # else top-level key like "overall_score"
+
+        # Navigate: "followup_logic.score" → dimensions.followup_logic.score
+        if keys[0] in judge_result.get("dimensions", {}):
+            node = judge_result["dimensions"]
 
         for k in keys:
             if isinstance(node, dict):
+                if k not in node:
+                    logger.warning("Assertion path %r not found in judge result", path)
+                    return False
                 node = node[k]
             else:
-                return True  # can't resolve, skip
+                logger.warning("Cannot navigate assertion path %r at key %r", path, k)
+                return False
 
         actual = float(node)
         if op == ">=":
@@ -75,6 +84,8 @@ def passes_key_assertion(judge_result: dict, scenario: dict) -> bool:
             return actual < val
         if op == "==":
             return actual == val
-    except Exception:
-        pass
-    return True
+        logger.warning("Unknown operator in assertion: %r", op)
+        return False
+    except (ValueError, TypeError) as e:
+        logger.warning("Failed to evaluate assertion %r: %s", assertion, e)
+        return False
