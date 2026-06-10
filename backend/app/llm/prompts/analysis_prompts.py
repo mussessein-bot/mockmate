@@ -33,8 +33,13 @@ def build_analysis_prompt(
         if academic:
             system = """你是一名研究生申请顾问，擅长分析导师的研究方向和课题组特点，帮助申请者做面试准备。
 请根据输入的导师/课题组信息，输出结构化的面试分析，帮助申请者了解面试重点。
+如果补充信息中包含学校官网、学院官网、教师主页、课题组主页或 Google Scholar / 论文信息，请优先据此总结：
+1. 目标导师或相关导师的研究方向、常用方法/技术、代表性课题；
+2. 这些方向对应的面试追问点，例如科研经历匹配、专业基础、方法论理解、论文/项目阅读；
+3. 若官网信息与面经冲突，以官网/教师主页/论文信息为准。
 输出严格的 JSON，不要输出任何其他文字：
 {
+  "advisor_research_summary": "目标导师研究方向总结。若给定目标导师，必须点名该导师，并总结研究方向/方法/课题；若未找到，说明未找到可靠公开信息，不要用学院泛化信息冒充。",
   "core_dimensions": [
     {"name": "维度名称", "description": "具体考察内容（1-2句）", "weight": "高|中|低"}
   ],
@@ -42,7 +47,7 @@ def build_analysis_prompt(
   "key_tips": "申请者准备建议（1-2句，聚焦如何展示与该导师研究方向的契合度）",
   "summary": "该课题组/导师面试一句话总结"
 }
-core_dimensions 输出 3-5 个，重点围绕：研究方向匹配、学术基础、科研潜力、沟通表达、对课题组的了解，按重要性从高到低排列。"""
+core_dimensions 输出 3-5 个，重点围绕：目标导师研究方向匹配、学术基础、科研潜力、沟通表达、对课题组的了解，按重要性从高到低排列。若已给定目标导师，summary、key_tips 和至少一个 core_dimension 必须体现导师姓名或其研究方向。"""
 
             user = f"""请分析以下导师/课题组研究生面试的重点：
 导师/课题组：{company_str}
@@ -93,8 +98,13 @@ core_dimensions 输出 3-5 个，按考察权重从高到低排列。"""
         if academic:
             system = """You are a graduate school application consultant skilled at analyzing professors' research areas and lab characteristics.
 Analyze the given advisor/lab information and output a structured interview analysis to help the applicant understand the key focus areas.
+If extra context contains official school/department pages, faculty pages, lab pages, Google Scholar, or publication snippets, prioritize them to summarize:
+1. the target advisor's or related faculty's research areas, methods/technologies, and representative topics;
+2. likely interview follow-ups derived from those areas, such as research fit, academic foundations, methodology understanding, and paper/project preparation;
+3. if official pages conflict with interview-experience snippets, trust official/faculty/publication sources first.
 Output strict JSON only, no other text:
 {
+  "advisor_research_summary": "Target advisor research summary. If a target advisor is provided, name the advisor and summarize research areas/methods/topics; if not found, say reliable public information was not found instead of substituting generic department information.",
   "core_dimensions": [
     {"name": "dimension name", "description": "specific assessment content (1-2 sentences)", "weight": "high|medium|low"}
   ],
@@ -102,7 +112,7 @@ Output strict JSON only, no other text:
   "key_tips": "preparation advice (1-2 sentences, focused on demonstrating fit with the advisor's research)",
   "summary": "one-sentence summary of this lab/advisor interview"
 }
-Output 3-5 core_dimensions covering: research direction fit, academic background, research potential, communication, lab knowledge. Sort by importance."""
+Output 3-5 core_dimensions covering: target-advisor research fit, academic background, research potential, communication, lab knowledge. Sort by importance. If a target advisor is provided, summary, key_tips, and at least one core_dimension must mention the advisor name or their research areas."""
 
             user = f"""Analyze the key interview focus areas for this graduate student position:
 Advisor/Lab: {company_str}

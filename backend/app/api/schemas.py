@@ -48,6 +48,7 @@ class JobAnalysisResponse(BaseModel):
     interview_style:  str
     key_tips:         str
     summary:          str
+    advisor_research_summary: Optional[str] = None
 
 
 class ExtractedQuestion(BaseModel):
@@ -60,6 +61,7 @@ class WebSearchAnalyzeResponse(BaseModel):
     interview_style:     str
     key_tips:            str
     summary:             str
+    advisor_research_summary: Optional[str] = None
     extracted_questions: list[ExtractedQuestion] = []
     search_available:    bool = True
 

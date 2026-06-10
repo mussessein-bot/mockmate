@@ -107,6 +107,7 @@ export interface JobAnalysisResponse {
   interview_style: string;
   key_tips: string;
   summary: string;
+  advisor_research_summary?: string | null;
 }
 
 export interface ExtractedQuestion {
