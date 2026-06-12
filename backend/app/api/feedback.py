@@ -27,6 +27,52 @@ def _weakest_dim(ev: EvaluationResult) -> str | None:
     return min(ev.dimension_scores, key=lambda d: d.score).dimension
 
 
+def _is_self_intro_question(question: str, language: str) -> bool:
+    normalized = question.lower()
+    if language == "zh":
+        return any(token in question for token in ("自我介绍", "介绍一下你自己", "介绍一下自己", "简单介绍"))
+    return any(
+        token in normalized
+        for token in ("tell me about yourself", "introduce yourself", "brief introduction", "quick intro")
+    )
+
+
+def _answer_units(text: str) -> int:
+    if any("\u4e00" <= ch <= "\u9fff" for ch in text):
+        return sum(1 for ch in text if "\u4e00" <= ch <= "\u9fff")
+    return len(text.split())
+
+
+def _reference_quality_issues(answer: str, language: str, is_self_intro: bool) -> list[str]:
+    stripped = answer.strip()
+    lower = stripped.lower()
+    issues: list[str] = []
+    if not stripped:
+        return ["empty"]
+    leaked_markers = (
+        "批判", "问题：", "改进点", "critique", "issues:", "improved version",
+        "final version", "self-critique",
+    )
+    if any(marker in lower for marker in leaked_markers) or any(marker in stripped for marker in leaked_markers):
+        issues.append("critique_leak")
+    units = _answer_units(stripped)
+    if is_self_intro:
+        if language == "zh" and units < 280:
+            issues.append("self_intro_too_short")
+        if language != "zh" and units < 180:
+            issues.append("self_intro_too_short")
+    else:
+        if language == "zh" and units < 40:
+            issues.append("answer_too_short")
+        if language != "zh" and units < 45:
+            issues.append("answer_too_short")
+    if language == "zh" and units > (560 if is_self_intro else 190):
+        issues.append("too_long")
+    if language != "zh" and units > (360 if is_self_intro else 180):
+        issues.append("too_long")
+    return issues
+
+
 async def _model_answer(
     question: str,
     language: str,
@@ -34,10 +80,41 @@ async def _model_answer(
     user_answer: str | None = None,
     overall_score: float = 5.0,
 ) -> str:
+    is_self_intro = _is_self_intro_question(question, language)
     if language == "zh":
         sys_msg = "你是一位面试辅导专家，擅长用真实、有说服力的方式呈现面试故事。"
         focus_hint = f"\n特别关注维度：{dimension_focus}（请在回答中用具体例子体现这一维度的亮点）。" if dimension_focus else ""
-        if user_answer and overall_score >= 3:
+        if is_self_intro:
+            length_limit = "350-500字"
+            intro_requirements = (
+                "这是开场自我介绍，不能按普通单题压缩。请保留足够信息量，方便面试官基于其中的经历继续追问。要求：\n"
+                "1. 覆盖教育/工作背景、核心经历或项目、关键能力、目标岗位动机\n"
+                "2. 尽量保留候选人原回答中的具体经历、技术/业务关键词和可追问线索，不要删成摘要\n"
+                "3. 结构自然，有主线，但不要显式使用'首先/其次/最后'或 STAR 标签\n"
+                "4. 可以精简重复和口水话，但不要缩短到少于原回答主要信息量\n"
+                "5. 如缺乏量化数据，只补充合理占位式表达，如'约X%'，不要编造确定事实\n"
+            )
+            if user_answer and overall_score >= 3:
+                draft_prompt = (
+                    f"以下是候选人的真实自我介绍：\n\n{user_answer}\n\n"
+                    f"请基于候选人的内容，输出一个优化版自我介绍（{length_limit}）。{intro_requirements}"
+                    f"{focus_hint}\n\n面试题：{question}"
+                )
+            else:
+                draft_prompt = (
+                    f"请为以下开场自我介绍题生成一个示范回答（{length_limit}）。{intro_requirements}"
+                    f"{focus_hint}\n\n问题：{question}"
+                )
+            critique_prompt_tmpl = (
+                "以下是一个自我介绍草稿：\n\n{draft}\n\n"
+                "请进行第{round_no}轮自我批判并改进它：\n"
+                "1. 是否完整覆盖背景、经历/项目、能力亮点和岗位动机？\n"
+                "2. 是否保留了足够可追问线索，而不是过度压缩？\n"
+                "3. 个人贡献是否清晰？表达是否自然？\n"
+                "4. 是否有编造确定事实、过度夸大或模板化表达？若有，改成占位式或更自然的说法。\n"
+                f"直接输出改进后的最终版本（{length_limit}），不要输出批判分析过程。"
+            )
+        elif user_answer and overall_score >= 3:
             draft_prompt = (
                 f"以下是候选人对面试题的真实回答：\n\n{user_answer}\n\n"
                 f"请基于候选人的回答，输出一个改进版本（150字以内）。要求：\n"
@@ -52,18 +129,50 @@ async def _model_answer(
                 f"请为以下面试题生成一个示范回答（150字以内）。"
                 f"语言自然流畅，避免显式的'情境/任务/行动/结果'标签，用真实对话的方式讲故事。{focus_hint}\n\n问题：{question}"
             )
-        critique_prompt_tmpl = (
-            "以下是一个面试示范回答的草稿：\n\n{draft}\n\n"
-            "请从以下三个角度批判并改进它：\n"
-            "1. 是否有具体的数字或量化结果？（没有则补充虚拟但合理的数据）\n"
-            "2. 候选人的个人贡献是否清晰？（有'我们'但无个人角色则修正）\n"
-            "3. 表达是否自然流畅？（有模板痕迹则改写）\n"
-            "直接输出改进后的最终版本（150字以内），不要输出批判分析过程。"
-        )
+        if not is_self_intro:
+            critique_prompt_tmpl = (
+                "以下是一个面试示范回答的草稿：\n\n{draft}\n\n"
+                "请进行第{round_no}轮自我批判并改进它：\n"
+                "1. 是否有具体的数字或量化结果？（没有则补充虚拟但合理的数据）\n"
+                "2. 候选人的个人贡献是否清晰？（有'我们'但无个人角色则修正）\n"
+                "3. 表达是否自然流畅？（有模板痕迹则改写）\n"
+                "4. 是否真正回答了题目、避免离题？是否保留候选人原始经历而不是换成无关案例？\n"
+                "直接输出改进后的最终版本（150字以内），不要输出批判分析过程。"
+            )
     else:
         sys_msg = "You are an expert interview coach who crafts authentic, compelling interview stories."
         focus_hint = f"\nPay special attention to dimension: {dimension_focus} (use a concrete example to highlight this dimension)." if dimension_focus else ""
-        if user_answer and overall_score >= 3:
+        if is_self_intro:
+            length_limit = "220-320 words"
+            intro_requirements = (
+                "This is an opening self-introduction, not a normal short interview answer. Keep enough substance so the interviewer can ask follow-up questions from it. Requirements:\n"
+                "1. Cover education/work background, core experience or projects, key strengths, and motivation for the target role\n"
+                "2. Preserve concrete experiences, technical/business keywords, and follow-up hooks from the candidate's answer; do not reduce it to a summary\n"
+                "3. Make it natural and coherent, but avoid explicit STAR labels or rigid templates\n"
+                "4. Remove repetition and filler, but do not shrink below the main information density of the original answer\n"
+                "5. If metrics are missing, use placeholders like 'about X%' instead of inventing firm facts\n"
+            )
+            if user_answer and overall_score >= 3:
+                draft_prompt = (
+                    f"Here is the candidate's actual self-introduction:\n\n{user_answer}\n\n"
+                    f"Write an improved self-introduction ({length_limit}) based on it. {intro_requirements}"
+                    f"{focus_hint}\n\nQuestion: {question}"
+                )
+            else:
+                draft_prompt = (
+                    f"Write a model self-introduction ({length_limit}) for the opening interview question below. "
+                    f"{intro_requirements}{focus_hint}\n\nQuestion: {question}"
+                )
+            critique_prompt_tmpl = (
+                "Here is a draft self-introduction:\n\n{draft}\n\n"
+                "Run self-critique round {round_no} and improve it on these dimensions:\n"
+                "1. Does it cover background, experience/projects, strengths, and motivation?\n"
+                "2. Does it preserve enough follow-up hooks instead of over-compressing?\n"
+                "3. Is the candidate's personal contribution clear and natural?\n"
+                "4. Does it avoid fabricated firm facts, exaggeration, or template-like phrasing? If needed, use placeholders or more natural wording.\n"
+                f"Output only the improved final version ({length_limit}). Do not show the critique."
+            )
+        elif user_answer and overall_score >= 3:
             draft_prompt = (
                 f"Here is the candidate's actual answer:\n\n{user_answer}\n\n"
                 f"Write an improved version (under 150 words) based on the candidate's answer. Requirements:\n"
@@ -78,24 +187,45 @@ async def _model_answer(
                 f"Write a model answer (under 150 words) for the interview question below. "
                 f"Make it natural and conversational — avoid explicit 'Situation/Task/Action/Result' labels; tell it as a real story.{focus_hint}\n\nQuestion: {question}"
             )
-        critique_prompt_tmpl = (
-            "Here is a draft model answer:\n\n{draft}\n\n"
-            "Critique and improve it on three dimensions:\n"
-            "1. Does it include specific numbers or quantified results? (If not, add plausible data)\n"
-            "2. Is the candidate's personal contribution clear? (Fix vague 'we' with explicit individual role)\n"
-            "3. Does it sound natural and conversational? (Rewrite any template-sounding parts)\n"
-            "Output only the improved final version (under 150 words). Do not show the critique."
-        )
+        if not is_self_intro:
+            critique_prompt_tmpl = (
+                "Here is a draft model answer:\n\n{draft}\n\n"
+                "Run self-critique round {round_no} and improve it on these dimensions:\n"
+                "1. Does it include specific numbers or quantified results? (If not, add plausible data)\n"
+                "2. Is the candidate's personal contribution clear? (Fix vague 'we' with explicit individual role)\n"
+                "3. Does it sound natural and conversational? (Rewrite any template-sounding parts)\n"
+                "4. Does it directly answer the question and preserve the candidate's original story instead of replacing it with an unrelated case?\n"
+                "Output only the improved final version (under 150 words). Do not show the critique."
+            )
 
     draft = await chat_completion(
         [{"role": "system", "content": sys_msg}, {"role": "user", "content": draft_prompt}],
         temperature=0.7,
     )
-    return await chat_completion(
-        [{"role": "system", "content": sys_msg},
-         {"role": "user", "content": critique_prompt_tmpl.format(draft=draft)}],
-        temperature=0.7,
-    )
+    improved = draft
+    for round_no in (1, 2):
+        improved = await chat_completion(
+            [{"role": "system", "content": sys_msg},
+             {"role": "user", "content": critique_prompt_tmpl.format(draft=improved, round_no=round_no)}],
+            temperature=0.7,
+        )
+
+    quality_issues = _reference_quality_issues(improved, language, is_self_intro)
+    if quality_issues:
+        repair_prompt = (
+            f"以下参考答案存在质量问题：{', '.join(quality_issues)}。\n\n参考答案：\n{improved}\n\n"
+            "请只修正这些问题：删除自我批判泄露内容、控制长度、保留题目相关性和具体信息。"
+            "直接输出修正后的参考答案，不要解释。"
+            if language == "zh"
+            else f"The reference answer has quality issues: {', '.join(quality_issues)}.\n\nReference answer:\n{improved}\n\n"
+            "Fix only these issues: remove leaked critique text, control length, preserve relevance and concrete information. "
+            "Output only the repaired reference answer, no explanation."
+        )
+        improved = await chat_completion(
+            [{"role": "system", "content": sys_msg}, {"role": "user", "content": repair_prompt}],
+            temperature=0.3,
+        )
+    return improved.strip()
 
 
 async def _annotate_and_critique(

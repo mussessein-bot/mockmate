@@ -205,6 +205,7 @@ def _parse_analysis(raw: dict) -> dict:
         "interview_style": raw.get("interview_style", ""),
         "key_tips": raw.get("key_tips", ""),
         "summary": raw.get("summary", ""),
+        "advisor_research_summary": raw.get("advisor_research_summary"),
     }
 
 
@@ -297,9 +298,31 @@ async def web_search_analyze(body: WebSearchAnalyzeRequest):
             pass
 
     # Step 2: job analysis with search results as context
-    extra_context = None
+    if body.interview_type == "graduate":
+        metadata = (
+            f"目标学校：{body.target_school or '未填写'}\n"
+            f"目标学院/专业：{body.target_department or body.target_role}\n"
+            f"目标导师：{body.target_advisor or '未指定'}\n"
+            f"申请/研究方向：{body.research_direction or body.target_role}\n"
+        )
+        extra_context = (
+            "研究生招生面试结构化输入：\n"
+            f"{metadata}\n"
+            "请在输出的 advisor_research_summary 字段中明确写出目标导师姓名和研究方向总结；"
+            "如果联网结果没有找到目标导师，也必须说明未找到，不要用学院泛化信息替代目标导师。\n"
+        )
+    else:
+        extra_context = None
     if search_text:
-        extra_context = f"以下是互联网上搜索到的相关信息，供参考：\n{search_text}"
+        if body.interview_type == "graduate":
+            extra_context += (
+                "以下是联网搜索到的研究生招生相关信息，供分析时参考。请优先采信学校官网、学院官网、教师主页、课题组主页；"
+                "其次参考 Google Scholar / 论文 / 学术主页；最后才参考面经内容。若搜索结果中包含目标导师或相关导师，"
+                "请总结其研究方向、常用方法/技术、代表性课题，并转化为面试可能考察的能力维度与准备建议。\n"
+                f"{search_text}"
+            )
+        else:
+            extra_context = f"以下是互联网上搜索到的相关信息，供参考：\n{search_text}"
 
     messages = build_analysis_prompt(
         target_role=effective_role,
@@ -307,6 +330,7 @@ async def web_search_analyze(body: WebSearchAnalyzeRequest):
         job_description=body.job_description,
         language=body.language,
         extra_context=extra_context,
+        interview_type=body.interview_type,
     )
     raw = await chat_completion_json(messages, temperature=0.3)
     analysis = _parse_analysis(raw)

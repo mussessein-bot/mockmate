@@ -1,4 +1,5 @@
 import json
+import re
 from typing import AsyncGenerator
 from openai import AsyncOpenAI
 from app.config import ARK_API_KEY, ARK_BASE_URL, ARK_MODEL
@@ -34,6 +35,47 @@ async def chat_completion(
         raise LLMError(f"LLM call failed: {e}") from e
 
 
+def extract_json_object(text: str) -> dict:
+    """Extract a JSON object from model output, tolerating wrappers and CoT text."""
+    stripped = text.strip()
+    if not stripped:
+        raise LLMError("LLM returned empty response while JSON was expected")
+
+    # Prefer fenced JSON blocks when present.
+    for match in re.finditer(r"```(?:json)?\s*\n?(.*?)\n?\s*```", stripped, re.DOTALL | re.IGNORECASE):
+        candidate = match.group(1).strip()
+        try:
+            parsed = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+
+    # Fast path for strict JSON mode responses.
+    try:
+        parsed = json.loads(stripped)
+    except json.JSONDecodeError:
+        parsed = None
+    if isinstance(parsed, dict):
+        return parsed
+
+    # Robust fallback: find the last parseable object in the response. JSONDecoder
+    # correctly handles braces inside strings, unlike manual brace counting.
+    decoder = json.JSONDecoder()
+    last_obj: dict | None = None
+    for match in re.finditer(r"{", stripped):
+        try:
+            parsed, _ = decoder.raw_decode(stripped[match.start():])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            last_obj = parsed
+    if last_obj is not None:
+        return last_obj
+
+    raise LLMError(f"LLM returned invalid JSON: {text[:200]}")
+
+
 async def chat_completion_stream(
     messages: list[dict],
     temperature: float = 0.7,
@@ -57,13 +99,21 @@ async def chat_completion_stream(
 
 
 async def chat_completion_json(messages: list[dict], temperature: float = 0.3) -> dict:
-    """Call the LLM expecting a JSON response; parse and return dict."""
-    text = await chat_completion(messages, temperature=temperature)
-    # Strip markdown code fences if model wraps output
-    stripped = text.strip()
-    if stripped.startswith("```"):
-        stripped = stripped.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+    """Call the LLM in JSON mode when available; parse and return a dict."""
     try:
-        return json.loads(stripped)
-    except json.JSONDecodeError as e:
-        raise LLMError(f"LLM returned invalid JSON: {text[:200]}") from e
+        response = await get_client().chat.completions.create(
+            model=ARK_MODEL,
+            messages=messages,
+            temperature=temperature,
+            response_format={"type": "json_object"},
+        )
+        text = response.choices[0].message.content or ""
+    except Exception as e:
+        msg = str(e).lower()
+        if "response_format" not in msg and "json_object" not in msg:
+            raise LLMError(f"LLM JSON call failed: {e}") from e
+        # Some OpenAI-compatible providers/models do not expose JSON mode. In
+        # that case keep one resilient fallback path instead of failing hard.
+        text = await chat_completion(messages, temperature=temperature)
+
+    return extract_json_object(text)

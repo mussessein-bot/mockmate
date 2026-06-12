@@ -189,6 +189,10 @@ export default function SetupPage() {
     } finally {
       setAnalysisLoading(false);
     }
+
+    if (interviewType === "graduate") {
+      void handleWebSearch();
+    }
   }
 
   async function handleWebSearch() {
@@ -568,6 +572,14 @@ export default function SetupPage() {
                   <p className="text-xs text-[#6B7280] mb-1">{zh ? "岗位总结" : "Summary"}</p>
                   <p className="text-sm text-[#111827] font-medium">{analysisResult.summary}</p>
                 </div>
+                {interviewType === "graduate" && analysisResult.advisor_research_summary && (
+                  <div className="bg-[#EEF2FF] rounded-xl p-4 border border-[#C7D2FE]">
+                    <p className="text-xs text-[#3730A3] font-medium mb-1">
+                      {zh ? "导师研究方向" : "Advisor Research Focus"}
+                    </p>
+                    <p className="text-sm text-[#312E81] leading-relaxed">{analysisResult.advisor_research_summary}</p>
+                  </div>
+                )}
                 <div>
                   <p className="text-xs font-medium text-[#374151] mb-2">{zh ? "核心考察方向" : "Core Assessment Areas"}</p>
                   <div className="space-y-2">
